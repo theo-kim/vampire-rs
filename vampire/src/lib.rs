@@ -157,33 +157,308 @@ use std::{
     ops::{BitAnd, BitOr, Index, Not, Shr},
     time::Duration,
 };
-use vampire_sys::{self as sys, vampire_unit_t};
+use vampire_sys::{self as sys, vampire_unit_t, vampire_interpretation_t};
 
 mod lock;
+pub mod tptp;
+
+/// Interpreted theory symbols for arithmetic and more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Interp {
+    Equal,
+    IntGreater,
+    IntGreaterEqual,
+    IntLess,
+    IntLessEqual,
+    IntDivides,
+    IntSuccessor,
+    IntUnaryMinus,
+    IntPlus,
+    IntMinus,
+    IntMultiply,
+    IntAbs,
+    RatGreater,
+    RatGreaterEqual,
+    RatLess,
+    RatLessEqual,
+    RatPlus,
+    RatMinus,
+    RatMultiply,
+    RatQuotient,
+    RealGreater,
+    RealGreaterEqual,
+    RealLess,
+    RealLessEqual,
+    RealPlus,
+    RealMinus,
+    RealMultiply,
+    RealQuotient,
+}
+
+impl Interp {
+    fn to_raw(self) -> vampire_interpretation_t {
+        match self {
+            Interp::Equal => sys::vampire_interpretation_t_VAMPIRE_INTERP_EQUAL,
+            Interp::IntGreater => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_GREATER,
+            Interp::IntGreaterEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_GREATER_EQUAL,
+            Interp::IntLess => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_LESS,
+            Interp::IntLessEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_LESS_EQUAL,
+            Interp::IntDivides => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_DIVIDES,
+            Interp::IntSuccessor => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_SUCCESSOR,
+            Interp::IntUnaryMinus => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_UNARY_MINUS,
+            Interp::IntPlus => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_PLUS,
+            Interp::IntMinus => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_MINUS,
+            Interp::IntMultiply => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_MULTIPLY,
+            Interp::IntAbs => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_ABS,
+            Interp::RatGreater => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_GREATER,
+            Interp::RatGreaterEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_GREATER_EQUAL,
+            Interp::RatLess => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_LESS,
+            Interp::RatLessEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_LESS_EQUAL,
+            Interp::RatPlus => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_PLUS,
+            Interp::RatMinus => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_MINUS,
+            Interp::RatMultiply => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_MULTIPLY,
+            Interp::RatQuotient => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_QUOTIENT,
+            Interp::RealGreater => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_GREATER,
+            Interp::RealGreaterEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_GREATER_EQUAL,
+            Interp::RealLess => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_LESS,
+            Interp::RealLessEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_LESS_EQUAL,
+            Interp::RealPlus => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_PLUS,
+            Interp::RealMinus => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_MINUS,
+            Interp::RealMultiply => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_MULTIPLY,
+            Interp::RealQuotient => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_QUOTIENT,
+        }
+    }
+}
+
+/// Trait for types that can be converted into a [`Term`].
+///
+/// This enables ergonomic use of Rust literals (like `1`, `2`) in term construction.
+pub trait IntoTerm {
+    /// Convert this type into a Vampire [`Term`].
+    fn into_term(self) -> Term;
+}
+
+impl IntoTerm for Term {
+    fn into_term(self) -> Term {
+        self
+    }
+}
+
+impl IntoTerm for i32 {
+    fn into_term(self) -> Term {
+        Term::int(&self.to_string())
+    }
+}
+
+impl IntoTerm for i64 {
+    fn into_term(self) -> Term {
+        Term::int(&self.to_string())
+    }
+}
+
+impl IntoTerm for u32 {
+    fn into_term(self) -> Term {
+        Term::int(&self.to_string())
+    }
+}
+
+impl IntoTerm for u64 {
+    fn into_term(self) -> Term {
+        Term::int(&self.to_string())
+    }
+}
+
+impl IntoTerm for f32 {
+    fn into_term(self) -> Term {
+        Term::real(&self.to_string())
+    }
+}
+
+impl IntoTerm for f64 {
+    fn into_term(self) -> Term {
+        Term::real(&self.to_string())
+    }
+}
 
 /// Trait for types that can be converted into term arguments.
 ///
 /// This trait allows `.with()` methods on [`Function`] and [`Predicate`] to accept
 /// different argument formats for convenience:
-/// - Single term: `f.with(x)`
-/// - Array: `f.with([x, y])`
+/// - Single term or literal: `f.with(x)`, `f.with(1)`
+/// - Homogeneous array: `f.with([x, y])`, `f.with([1, 2])`
+/// - Heterogeneous tuple: `f.with((x, 1))`
 pub trait IntoTermArgs {
-    /// Convert this type into a slice of terms.
-    fn as_slice(&self) -> &[Term];
+    /// Calls the given function with a slice of terms representing the arguments.
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R;
 }
 
-impl IntoTermArgs for Term {
-    fn as_slice(&self) -> &[Term] {
-        std::slice::from_ref(self)
+impl IntoTermArgs for () {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        f(&[])
     }
 }
 
-impl<T> IntoTermArgs for T
-where
-    T: AsRef<[Term]>,
+impl<'a> IntoTermArgs for &'a [Term] {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        f(self)
+    }
+}
+
+impl IntoTermArgs for Term {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        f(std::slice::from_ref(&self))
+    }
+}
+
+impl IntoTermArgs for i32 {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let t = self.into_term();
+        f(std::slice::from_ref(&t))
+    }
+}
+
+impl IntoTermArgs for i64 {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let t = self.into_term();
+        f(std::slice::from_ref(&t))
+    }
+}
+
+impl IntoTermArgs for u32 {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let t = self.into_term();
+        f(std::slice::from_ref(&t))
+    }
+}
+
+impl IntoTermArgs for u64 {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let t = self.into_term();
+        f(std::slice::from_ref(&t))
+    }
+}
+
+impl IntoTermArgs for f32 {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let t = self.into_term();
+        f(std::slice::from_ref(&t))
+    }
+}
+
+impl IntoTermArgs for f64 {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let t = self.into_term();
+        f(std::slice::from_ref(&t))
+    }
+}
+
+impl<'a, const N: usize> IntoTermArgs for &'a [Term; N] {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        f(self)
+    }
+}
+
+impl<'a> IntoTermArgs for &'a Vec<Term> {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        f(self)
+    }
+}
+
+impl<T: IntoTerm, const N: usize> IntoTermArgs for [T; N] {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = self.map(|t| t.into_term());
+        f(&terms)
+    }
+}
+
+impl<T: IntoTerm> IntoTermArgs for Vec<T> {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms: Vec<Term> = self.into_iter().map(|t| t.into_term()).collect();
+        f(&terms)
+    }
+}
+
+impl<T1: IntoTerm, T2: IntoTerm> IntoTermArgs for (T1, T2) {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = [self.0.into_term(), self.1.into_term()];
+        f(&terms)
+    }
+}
+
+impl<T1: IntoTerm, T2: IntoTerm, T3: IntoTerm> IntoTermArgs for (T1, T2, T3) {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = [self.0.into_term(), self.1.into_term(), self.2.into_term()];
+        f(&terms)
+    }
+}
+
+impl<T1: IntoTerm, T2: IntoTerm, T3: IntoTerm, T4: IntoTerm> IntoTermArgs for (T1, T2, T3, T4) {
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = [
+            self.0.into_term(),
+            self.1.into_term(),
+            self.2.into_term(),
+            self.3.into_term(),
+        ];
+        f(&terms)
+    }
+}
+
+impl<T1: IntoTerm, T2: IntoTerm, T3: IntoTerm, T4: IntoTerm, T5: IntoTerm> IntoTermArgs
+    for (T1, T2, T3, T4, T5)
 {
-    fn as_slice(&self) -> &[Term] {
-        self.as_ref()
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = [
+            self.0.into_term(),
+            self.1.into_term(),
+            self.2.into_term(),
+            self.3.into_term(),
+            self.4.into_term(),
+        ];
+        f(&terms)
+    }
+}
+
+impl<T1: IntoTerm, T2: IntoTerm, T3: IntoTerm, T4: IntoTerm, T5: IntoTerm, T6: IntoTerm, T7: IntoTerm>
+    IntoTermArgs for (T1, T2, T3, T4, T5, T6, T7)
+{
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = [
+            self.0.into_term(),
+            self.1.into_term(),
+            self.2.into_term(),
+            self.3.into_term(),
+            self.4.into_term(),
+            self.5.into_term(),
+            self.6.into_term(),
+        ];
+        f(&terms)
+    }
+}
+
+impl<
+        T1: IntoTerm,
+        T2: IntoTerm,
+        T3: IntoTerm,
+        T4: IntoTerm,
+        T5: IntoTerm,
+        T6: IntoTerm,
+        T7: IntoTerm,
+        T8: IntoTerm,
+    > IntoTermArgs for (T1, T2, T3, T4, T5, T6, T7, T8)
+{
+    fn with_slice<R>(self, f: impl FnOnce(&[Term]) -> R) -> R {
+        let terms = [
+            self.0.into_term(),
+            self.1.into_term(),
+            self.2.into_term(),
+            self.3.into_term(),
+            self.4.into_term(),
+            self.5.into_term(),
+            self.6.into_term(),
+            self.7.into_term(),
+        ];
+        f(&terms)
     }
 }
 
@@ -207,10 +482,22 @@ where
 /// // Create a binary function
 /// let add = Function::new("add", 2);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct Function {
     id: u32,
     arity: u32,
+    name: String,
+    arg_sorts: Vec<Sort>,
+    ret_sort: Option<Sort>,
+    is_typed: bool,
+}
+
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool { self.id == other.id }
+}
+impl Eq for Function {}
+impl std::hash::Hash for Function {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { self.id.hash(state); }
 }
 
 impl Function {
@@ -243,11 +530,15 @@ impl Function {
     /// ```
     pub fn new(name: &str, arity: u32) -> Self {
         synced(|_| {
-            let name = CString::new(name).expect("valid c string");
-            let function = unsafe { sys::vampire_add_function(name.as_ptr(), arity) };
+            let name_cstr = CString::new(name).expect("valid c string");
+            let function = unsafe { sys::vampire_add_function(name_cstr.as_ptr(), arity) };
             Self {
                 id: function,
                 arity,
+                name: name.to_string(),
+                arg_sorts: Vec::new(),
+                ret_sort: None,
+                is_typed: false,
             }
         })
     }
@@ -268,7 +559,7 @@ impl Function {
 
     /// Creates a constant term (0-ary function).
     ///
-    /// This is a convenience method equivalent to `Function::new(name, 0).with([])`.
+    /// This is a convenience method equivalent to `Function::new(name, 0).with(())`.
     /// Constants represent specific objects in the domain.
     ///
     /// # Arguments
@@ -284,7 +575,7 @@ impl Function {
     /// let zero = Function::constant("0");
     /// ```
     pub fn constant(name: &str) -> Term {
-        Self::new(name, 0).with([])
+        Self::new(name, 0).with(())
     }
 
     /// Applies this function to the given arguments, creating a term.
@@ -314,7 +605,112 @@ impl Function {
     /// let sx = succ.with(x);
     /// ```
     pub fn with(&self, args: impl IntoTermArgs) -> Term {
-        Term::new_function(*self, args.as_slice())
+        args.with_slice(|slice| {
+            if slice.is_empty() {
+                synced(|_| Term {
+                    id: unsafe { sys::vampire_constant(self.id) },
+                })
+            } else {
+                Term::new_function(self, slice)
+            }
+        })
+    }
+
+    /// Creates a new typed function symbol with explicit sort annotations.
+    ///
+    /// The sort of each argument and the return sort are specified. Like [`Function::new`],
+    /// this is idempotent when called with the same name and sorts; only the first call
+    /// registers the type. Do not mix with [`Function::new`] for the same name, as that
+    /// would register conflicting types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Sort, Function};
+    ///
+    /// let person = Sort::new("person");
+    /// let father_of = Function::typed("father_of", &[person.clone()], person);
+    /// ```
+    pub fn typed(name: &str, arg_sorts: &[Sort], return_sort: Sort) -> Self {
+        synced(|_| {
+            let name_cstr = CString::new(name).expect("valid c string");
+            let mut indices: Vec<u32> = arg_sorts.iter().map(|s| s.id).collect();
+            let id = unsafe {
+                sys::vampire_add_typed_function(
+                    name_cstr.as_ptr(),
+                    indices.as_mut_ptr(),
+                    indices.len(),
+                    return_sort.id,
+                )
+            };
+            Self {
+                id,
+                arity: arg_sorts.len() as u32,
+                name: name.to_string(),
+                arg_sorts: arg_sorts.to_vec(),
+                ret_sort: Some(return_sort),
+                is_typed: true,
+            }
+        })
+    }
+
+    /// Creates a new interpreted function symbol.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Function, Interp};
+    ///
+    /// let plus = Function::interpreted("$sum", Interp::IntPlus);
+    /// ```
+    pub fn interpreted(name: &str, interp: Interp) -> Self {
+        synced(|_| {
+            let name_cstr = CString::new(name).expect("valid c string");
+            let id = unsafe { sys::vampire_add_interpreted_function(name_cstr.as_ptr(), interp.to_raw()) };
+            let arity = match interp {
+                Interp::IntUnaryMinus | Interp::IntSuccessor | Interp::IntAbs => 1,
+                _ => 2,
+            };
+            Self {
+                id,
+                arity,
+                name: name.to_string(),
+                arg_sorts: Vec::new(),
+                ret_sort: None,
+                is_typed: false,
+            }
+        })
+    }
+
+    /// Returns the TPTP type declaration line for this function, or `None` for
+    /// untyped and interpreted functions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Sort, Function};
+    ///
+    /// let list = Sort::new("list");
+    /// let nil = Function::typed("nil", &[], list.clone());
+    /// assert!(nil.tptp_decl().is_some());
+    ///
+    /// let untyped = Function::new("f", 1);
+    /// assert_eq!(untyped.tptp_decl(), None);
+    /// ```
+    pub fn tptp_decl(&self) -> Option<String> {
+        if !self.is_typed {
+            return None;
+        }
+        let ret = self.ret_sort.as_ref().unwrap().tptp_name();
+        if self.arg_sorts.is_empty() {
+            Some(format!("tff(fn_{}, type, {}: {}).", self.name, self.name, ret))
+        } else {
+            let args = self.arg_sorts.iter()
+                .map(|s| s.tptp_name())
+                .collect::<Vec<_>>()
+                .join(" * ");
+            Some(format!("tff(fn_{}_{}, type, {}: ({}) > {}).", self.name, self.arity, self.name, args, ret))
+        }
     }
 }
 
@@ -340,10 +736,21 @@ impl Function {
 /// let bob = Function::constant("bob");
 /// let formula = loves.with([alice, bob]); // loves(alice, bob)
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct Predicate {
     id: u32,
     arity: u32,
+    name: String,
+    arg_sorts: Vec<Sort>,
+    is_typed: bool,
+}
+
+impl PartialEq for Predicate {
+    fn eq(&self, other: &Self) -> bool { self.id == other.id }
+}
+impl Eq for Predicate {}
+impl std::hash::Hash for Predicate {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { self.id.hash(state); }
 }
 
 impl Predicate {
@@ -375,14 +782,15 @@ impl Predicate {
     /// assert_ne!(edge.arity(), edge3.arity());
     /// ```
     pub fn new(name: &str, arity: u32) -> Self {
-        // TODO: predicate/term with same name already exists?
-
         synced(|_| {
-            let name = CString::new(name).expect("valid c string");
-            let predicate = unsafe { sys::vampire_add_predicate(name.as_ptr(), arity) };
+            let name_cstr = CString::new(name).expect("valid c string");
+            let predicate = unsafe { sys::vampire_add_predicate(name_cstr.as_ptr(), arity) };
             Self {
                 id: predicate,
                 arity,
+                name: name.to_string(),
+                arg_sorts: Vec::new(),
+                is_typed: false,
             }
         })
     }
@@ -429,7 +837,215 @@ impl Predicate {
     /// let e = edge.with([a, b]);
     /// ```
     pub fn with(&self, args: impl IntoTermArgs) -> Formula {
-        Formula::new_predicate(*self, args.as_slice())
+        args.with_slice(|slice| Formula::new_predicate(self, slice))
+    }
+
+    /// Creates a new typed predicate symbol with explicit sort annotations.
+    ///
+    /// The sort of each argument is specified. Like [`Predicate::new`], this is
+    /// idempotent when called with the same name and sorts; only the first call
+    /// registers the type. Do not mix with [`Predicate::new`] for the same name,
+    /// as that would register conflicting types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Sort, Predicate};
+    ///
+    /// let person = Sort::new("person");
+    /// let animal = Sort::new("animal");
+    /// let owns = Predicate::typed("owns", &[person, animal]);
+    /// ```
+    pub fn typed(name: &str, arg_sorts: &[Sort]) -> Self {
+        synced(|_| {
+            let name_cstr = CString::new(name).expect("valid c string");
+            let mut indices: Vec<u32> = arg_sorts.iter().map(|s| s.id).collect();
+            let id = unsafe {
+                sys::vampire_add_typed_predicate(
+                    name_cstr.as_ptr(),
+                    indices.as_mut_ptr(),
+                    indices.len(),
+                )
+            };
+            Self {
+                id,
+                arity: arg_sorts.len() as u32,
+                name: name.to_string(),
+                arg_sorts: arg_sorts.to_vec(),
+                is_typed: true,
+            }
+        })
+    }
+
+    /// Creates a new interpreted predicate symbol.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Predicate, Interp};
+    ///
+    /// let less = Predicate::interpreted("$less", Interp::IntLess);
+    /// ```
+    pub fn interpreted(name: &str, interp: Interp) -> Self {
+        synced(|_| {
+            let name_cstr = CString::new(name).expect("valid c string");
+            let id = unsafe { sys::vampire_add_interpreted_predicate(name_cstr.as_ptr(), interp.to_raw()) };
+            Self {
+                id,
+                arity: 2,
+                name: name.to_string(),
+                arg_sorts: Vec::new(),
+                is_typed: false,
+            }
+        })
+    }
+
+    /// Returns the TPTP type declaration line for this predicate, or `None` for
+    /// untyped and interpreted predicates.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Sort, Predicate};
+    ///
+    /// let person = Sort::new("person");
+    /// let mortal = Predicate::typed("mortal", &[person]);
+    /// assert!(mortal.tptp_decl().is_some());
+    ///
+    /// let untyped = Predicate::new("p", 1);
+    /// assert_eq!(untyped.tptp_decl(), None);
+    /// ```
+    pub fn tptp_decl(&self) -> Option<String> {
+        if !self.is_typed {
+            return None;
+        }
+        let args = self.arg_sorts.iter()
+            .map(|s| s.tptp_name())
+            .collect::<Vec<_>>()
+            .join(" * ");
+        if self.arg_sorts.len() == 1 {
+            Some(format!("tff(pred_{}_{}, type, {}: {} > $o).", self.name, self.arity, self.name, args))
+        } else {
+            Some(format!("tff(pred_{}_{}, type, {}: ({}) > $o).", self.name, self.arity, self.name, args))
+        }
+    }
+}
+
+/// A sort (type) in typed first-order logic (TFF).
+///
+/// Sorts are used to partition the domain into distinct types. Functions and
+/// predicates can be declared with specific sort signatures, and quantified
+/// variables can be annotated with their sort.
+///
+/// # Examples
+///
+/// ```
+/// use vampire_prover::{Sort, Function, Predicate, forall_typed};
+///
+/// // User-defined sort
+/// let person = Sort::new("person");
+///
+/// // Built-in sorts
+/// let i = Sort::default_sort(); // $i (untyped individual)
+/// let z = Sort::int();          // $int
+/// ```
+#[derive(Debug, Clone)]
+pub struct Sort {
+    id: u32, // typeCon index in Vampire's signature
+    name: String,
+    is_builtin: bool,
+}
+
+impl PartialEq for Sort {
+    fn eq(&self, other: &Self) -> bool { self.id == other.id }
+}
+impl Eq for Sort {}
+impl std::hash::Hash for Sort {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { self.id.hash(state); }
+}
+
+impl Sort {
+    /// Creates (or retrieves) a user-defined sort with the given name.
+    ///
+    /// Idempotent: calling with the same name always returns the same sort.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::Sort;
+    ///
+    /// let person = Sort::new("person");
+    /// let person2 = Sort::new("person");
+    /// assert_eq!(person, person2);
+    /// ```
+    pub fn new(name: &str) -> Self {
+        synced(|_| {
+            let name_cstr = CString::new(name).expect("valid c string");
+            let id = unsafe { sys::vampire_add_sort(name_cstr.as_ptr()) };
+            Self { id, name: name.to_string(), is_builtin: false }
+        })
+    }
+
+    /// Returns the default individual sort (`$i`).
+    pub fn default_sort() -> Self {
+        synced(|_| Self {
+            id: unsafe { sys::vampire_sort_default() },
+            name: "$i".to_string(),
+            is_builtin: true,
+        })
+    }
+
+    /// Returns the integer sort (`$int`).
+    pub fn int() -> Self {
+        synced(|_| Self {
+            id: unsafe { sys::vampire_sort_int() },
+            name: "$int".to_string(),
+            is_builtin: true,
+        })
+    }
+
+    /// Returns the real number sort (`$real`).
+    pub fn real() -> Self {
+        synced(|_| Self {
+            id: unsafe { sys::vampire_sort_real() },
+            name: "$real".to_string(),
+            is_builtin: true,
+        })
+    }
+
+    /// Returns the rational number sort (`$rat`).
+    pub fn rational() -> Self {
+        synced(|_| Self {
+            id: unsafe { sys::vampire_sort_rational() },
+            name: "$rat".to_string(),
+            is_builtin: true,
+        })
+    }
+
+    /// Returns the TPTP name for this sort (e.g. `"$int"`, `"$real"`, or a user-defined name).
+    pub fn tptp_name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the TPTP type declaration line for this sort, or `None` for built-in sorts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::Sort;
+    ///
+    /// let person = Sort::new("person");
+    /// assert_eq!(person.tptp_decl(), Some("tff(sort_person, type, person: $tType).".to_string()));
+    ///
+    /// let int_sort = Sort::int();
+    /// assert_eq!(int_sort.tptp_decl(), None);
+    /// ```
+    pub fn tptp_decl(&self) -> Option<String> {
+        if self.is_builtin {
+            None
+        } else {
+            Some(format!("tff(sort_{}, type, {}: $tType).", self.name, self.name))
+        }
     }
 }
 
@@ -534,10 +1150,9 @@ impl Term {
     /// let x = Term::new_var(0);
     /// let y = Term::new_var(1);
     ///
-    /// let sum = Term::new_function(add, &[x, y]);
+    /// let sum = Term::new_function(&add, &[x, y]);
     /// ```
-    pub fn new_function(func: Function, args: &[Term]) -> Self {
-        // TODO: try_new_function?
+    pub fn new_function(func: &Function, args: &[Term]) -> Self {
         assert!(args.len() == func.arity() as usize);
 
         synced(|_| unsafe {
@@ -546,6 +1161,11 @@ impl Term {
             let term = sys::vampire_term(func.id, args, arg_count);
             Self { id: term }
         })
+    }
+
+    /// Converts this term to a TPTP string representation.
+    pub fn to_tptp(&self) -> String {
+        self.to_string()
     }
 
     /// Creates a variable with the given index.
@@ -621,6 +1241,61 @@ impl Term {
     /// ```
     pub fn eq(&self, rhs: Term) -> Formula {
         Formula::new_eq(*self, rhs)
+    }
+
+    /// Creates a typed equality formula between this term and another, with an explicit sort.
+    ///
+    /// Use this instead of [`Term::eq`] when working with TFF problems where the sort
+    /// of the equality must be stated explicitly.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::{Sort, Function, forall_typed};
+    ///
+    /// let person = Sort::new("person");
+    /// let alice = Function::typed("alice", &[], person.clone()).with(());
+    /// let bob = Function::typed("bob", &[], person.clone()).with(());
+    ///
+    /// let are_equal = alice.typed_eq(bob, person);
+    /// ```
+    pub fn typed_eq(self, rhs: Term, sort: Sort) -> Formula {
+        Formula::new_eq_typed(self, rhs, sort)
+    }
+
+    /// Creates an interpreted integer constant term.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::Term;
+    ///
+    /// let hundred = Term::int("100");
+    /// ```
+    pub fn int(value: &str) -> Self {
+        synced(|_| {
+            let value_cstr = CString::new(value).expect("valid c string");
+            let id = unsafe { sys::vampire_add_integer_constant(value_cstr.as_ptr()) };
+            Self { id: unsafe { sys::vampire_constant(id) } }
+        })
+    }
+
+    /// Creates an interpreted rational constant term.
+    pub fn rational(value: &str) -> Self {
+        synced(|_| {
+            let value_cstr = CString::new(value).expect("valid c string");
+            let id = unsafe { sys::vampire_add_rational_constant(value_cstr.as_ptr()) };
+            Self { id: unsafe { sys::vampire_constant(id) } }
+        })
+    }
+
+    /// Creates an interpreted real constant term.
+    pub fn real(value: &str) -> Self {
+        synced(|_| {
+            let value_cstr = CString::new(value).expect("valid c string");
+            let id = unsafe { sys::vampire_add_real_constant(value_cstr.as_ptr()) };
+            Self { id: unsafe { sys::vampire_constant(id) } }
+        })
     }
 }
 
@@ -739,9 +1414,9 @@ impl Formula {
     /// let mortal = Predicate::new("mortal", 1);
     /// let socrates = Function::constant("socrates");
     ///
-    /// let formula = Formula::new_predicate(mortal, &[socrates]);
+    /// let formula = Formula::new_predicate(&mortal, &[socrates]);
     /// ```
-    pub fn new_predicate(pred: Predicate, args: &[Term]) -> Self {
+    pub fn new_predicate(pred: &Predicate, args: &[Term]) -> Self {
         assert!(args.len() == pred.arity() as usize);
 
         synced(|_| unsafe {
@@ -751,6 +1426,11 @@ impl Formula {
             let atom = sys::vampire_atom(lit);
             Self { id: atom }
         })
+    }
+
+    /// Converts this formula to a TPTP string representation.
+    pub fn to_tptp(&self) -> String {
+        self.to_string()
     }
 
     /// Creates an equality formula between two terms.
@@ -996,6 +1676,55 @@ impl Formula {
             Self { id }
         })
     }
+
+    /// Creates a universally quantified formula with a sort annotation on the bound variable.
+    ///
+    /// The [`forall_typed`] helper function provides a more ergonomic interface.
+    ///
+    /// # Arguments
+    ///
+    /// * `var` - The index of the variable to quantify
+    /// * `sort` - The sort of the bound variable
+    /// * `f` - The formula body
+    pub fn new_forall_typed(var: u32, sort: Sort, f: Formula) -> Self {
+        synced(|_| {
+            let id = unsafe { sys::vampire_forall_typed(var, sort.id, f.id) };
+            Self { id }
+        })
+    }
+
+    /// Creates an existentially quantified formula with a sort annotation on the bound variable.
+    ///
+    /// The [`exists_typed`] helper function provides a more ergonomic interface.
+    ///
+    /// # Arguments
+    ///
+    /// * `var` - The index of the variable to quantify
+    /// * `sort` - The sort of the bound variable
+    /// * `f` - The formula body
+    pub fn new_exists_typed(var: u32, sort: Sort, f: Formula) -> Self {
+        synced(|_| {
+            let id = unsafe { sys::vampire_exists_typed(var, sort.id, f.id) };
+            Self { id }
+        })
+    }
+
+    /// Creates a typed equality formula between two terms with an explicit sort.
+    ///
+    /// Use [`Term::typed_eq`] for a more ergonomic interface.
+    ///
+    /// # Arguments
+    ///
+    /// * `lhs` - Left-hand side term
+    /// * `rhs` - Right-hand side term
+    /// * `sort` - The sort of both terms
+    pub fn new_eq_typed(lhs: Term, rhs: Term, sort: Sort) -> Self {
+        synced(|_| unsafe {
+            let lit = sys::vampire_typed_eq(true, lhs.id, rhs.id, sort.id);
+            let atom = sys::vampire_atom(lit);
+            Self { id: atom }
+        })
+    }
 }
 
 /// Creates a universally quantified formula using a closure.
@@ -1081,6 +1810,60 @@ pub fn exists<F: FnOnce(Term) -> Formula>(f: F) -> Formula {
     let (var, var_idx) = Term::free_var();
     let f = f(var);
     Formula::new_exists(var_idx, f)
+}
+
+/// Creates a universally quantified formula over a typed variable using a closure.
+///
+/// This is the typed analogue of [`forall`]. The closure receives a fresh variable
+/// term; the variable is bound with the given sort annotation.
+///
+/// # Arguments
+///
+/// * `sort` - The sort of the quantified variable
+/// * `f` - A closure that takes a [`Term`] and returns a [`Formula`]
+///
+/// # Examples
+///
+/// ```
+/// use vampire_prover::{Sort, Predicate, Function, forall_typed};
+///
+/// let person = Sort::new("person");
+/// let mortal = Predicate::typed("mortal", &[person.clone()]);
+///
+/// // ∀x: person. mortal(x)
+/// let all_mortal = forall_typed(person, |x| mortal.with(x));
+/// ```
+pub fn forall_typed<F: FnOnce(Term) -> Formula>(sort: Sort, f: F) -> Formula {
+    let (var, var_idx) = Term::free_var();
+    let formula = f(var);
+    Formula::new_forall_typed(var_idx, sort, formula)
+}
+
+/// Creates an existentially quantified formula over a typed variable using a closure.
+///
+/// This is the typed analogue of [`exists`]. The closure receives a fresh variable
+/// term; the variable is bound with the given sort annotation.
+///
+/// # Arguments
+///
+/// * `sort` - The sort of the quantified variable
+/// * `f` - A closure that takes a [`Term`] and returns a [`Formula`]
+///
+/// # Examples
+///
+/// ```
+/// use vampire_prover::{Sort, Predicate, Function, exists_typed};
+///
+/// let person = Sort::new("person");
+/// let happy = Predicate::typed("happy", &[person.clone()]);
+///
+/// // ∃x: person. happy(x)
+/// let someone_happy = exists_typed(person, |x| happy.with(x));
+/// ```
+pub fn exists_typed<F: FnOnce(Term) -> Formula>(sort: Sort, f: F) -> Formula {
+    let (var, var_idx) = Term::free_var();
+    let formula = f(var);
+    Formula::new_exists_typed(var_idx, sort, formula)
 }
 
 /// Implements the `&` operator for conjunction (AND).
@@ -1280,15 +2063,46 @@ impl Default for Options {
 ///
 /// // This should be unsatisfiable
 /// ```
+/// Whether a problem uses untyped first-order logic (FOF) or typed (TFF).
+///
+/// Set at construction time via [`Problem::new`] (FOF) or [`Problem::new_tff`] (TFF).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicMode {
+    /// First-order logic without sort annotations (FOF).
+    Fof,
+    /// Typed first-order logic with sort annotations (TFF).
+    Tff,
+}
+
 #[derive(Debug, Clone)]
 pub struct Problem {
     options: Options,
+    mode: LogicMode,
     axioms: Vec<Formula>,
     conjecture: Option<Formula>,
+    sort_decls: Vec<Sort>,
+    fn_decls: Vec<Function>,
+    pred_decls: Vec<Predicate>,
 }
 
 impl Problem {
-    /// Creates a new empty problem with the given options.
+    /// Creates a new problem from a TPTP string.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ParseError` if the TPTP input is invalid or unsupported.
+    pub fn from_tptp(input: &str) -> Result<Self, tptp::ParseError> {
+        tptp::TptpParser::parse(input)
+    }
+
+    /// Replaces the options on this problem.
+    pub fn with_options(mut self, options: Options) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Creates a new, empty problem with the given options.
+
     ///
     /// # Arguments
     ///
@@ -1303,12 +2117,40 @@ impl Problem {
     /// // Default options
     /// let problem = Problem::new(Options::new());
     /// ```
+    /// Creates a new FOF (untyped first-order logic) problem.
     pub fn new(options: Options) -> Self {
         Self {
             options,
+            mode: LogicMode::Fof,
             axioms: Vec::new(),
             conjecture: None,
+            sort_decls: Vec::new(),
+            fn_decls: Vec::new(),
+            pred_decls: Vec::new(),
         }
+    }
+
+    /// Creates a new TFF (typed first-order logic) problem.
+    ///
+    /// Use this when working with typed sorts, functions, and predicates.
+    /// Call [`declare_sort`][Self::declare_sort], [`declare_function`][Self::declare_function],
+    /// and [`declare_predicate`][Self::declare_predicate] to register type declarations
+    /// that will be emitted by [`to_tptp`][Self::to_tptp].
+    pub fn new_tff(options: Options) -> Self {
+        Self {
+            options,
+            mode: LogicMode::Tff,
+            axioms: Vec::new(),
+            conjecture: None,
+            sort_decls: Vec::new(),
+            fn_decls: Vec::new(),
+            pred_decls: Vec::new(),
+        }
+    }
+
+    /// Returns the logic mode of this problem.
+    pub fn mode(&self) -> LogicMode {
+        self.mode
     }
 
     /// Adds an axiom to the problem.
@@ -1369,6 +2211,91 @@ impl Problem {
         self
     }
 
+    /// Registers a sort declaration for TPTP output (TFF problems only).
+    ///
+    /// Only user-defined sorts produce declarations; built-in sorts (`$int`, etc.) are
+    /// ignored. Duplicate declarations (by sort id) are silently skipped.
+    /// In FOF mode this is a no-op.
+    pub fn declare_sort(&mut self, s: Sort) -> &mut Self {
+        if self.mode == LogicMode::Tff {
+            if s.tptp_decl().is_some() && !self.sort_decls.iter().any(|x| x.id == s.id) {
+                self.sort_decls.push(s);
+            }
+        }
+        self
+    }
+
+    /// Registers a function declaration for TPTP output (TFF problems only).
+    ///
+    /// Only typed functions produce declarations. Duplicates and FOF-mode calls are ignored.
+    pub fn declare_function(&mut self, f: Function) -> &mut Self {
+        if self.mode == LogicMode::Tff {
+            if f.is_typed && !self.fn_decls.iter().any(|x| x.id == f.id) {
+                self.fn_decls.push(f);
+            }
+        }
+        self
+    }
+
+    /// Registers a predicate declaration for TPTP output (TFF problems only).
+    ///
+    /// Only typed predicates produce declarations. Duplicates and FOF-mode calls are ignored.
+    pub fn declare_predicate(&mut self, p: Predicate) -> &mut Self {
+        if self.mode == LogicMode::Tff {
+            if p.is_typed && !self.pred_decls.iter().any(|x| x.id == p.id) {
+                self.pred_decls.push(p);
+            }
+        }
+        self
+    }
+
+    /// Serialises this problem as a TPTP string.
+    ///
+    /// Uses `tff(...)` syntax for problems created with [`Problem::new_tff`],
+    /// and `fof(...)` for problems created with [`Problem::new`].
+    /// Type declarations registered via [`declare_sort`][Self::declare_sort] /
+    /// [`declare_function`][Self::declare_function] /
+    /// [`declare_predicate`][Self::declare_predicate] are emitted first.
+    pub fn to_tptp(&self) -> String {
+        let kw = match self.mode {
+            LogicMode::Tff => "tff",
+            LogicMode::Fof => "fof",
+        };
+
+        let mut out = String::new();
+
+        for s in &self.sort_decls {
+            if let Some(decl) = s.tptp_decl() {
+                out.push_str(&decl);
+                out.push('\n');
+            }
+        }
+
+        for f in &self.fn_decls {
+            if let Some(decl) = f.tptp_decl() {
+                out.push_str(&decl);
+                out.push('\n');
+            }
+        }
+
+        for p in &self.pred_decls {
+            if let Some(decl) = p.tptp_decl() {
+                out.push_str(&decl);
+                out.push('\n');
+            }
+        }
+
+        for (i, ax) in self.axioms.iter().enumerate() {
+            out.push_str(&format!("{}(axiom_{}, axiom, {}).\n", kw, i, ax.to_tptp()));
+        }
+
+        if let Some(conj) = &self.conjecture {
+            out.push_str(&format!("{}(conjecture, conjecture, {}).\n", kw, conj.to_tptp()));
+        }
+
+        out
+    }
+
     unsafe fn unsynce_solve(&mut self) -> ProofRes {
         unsafe {
             sys::vampire_prepare_for_next_proof();
@@ -1395,6 +2322,98 @@ impl Problem {
 
             ProofRes::new_from_raw(proof_res)
         }
+    }
+
+    /// Solves the problem in an isolated child process.
+    ///
+    /// This uses the `fork()` system call to create a duplicate of the current process.
+    /// The solver runs in the child process, ensuring that any global state corruption
+    /// or memory leaks in the underlying Vampire C++ library are wiped clean when
+    /// the child exits. The parent process remains unaffected.
+    ///
+    /// This is highly recommended for persistent applications making repeated solver calls.
+    pub fn solve_isolated(&mut self) -> ProofRes {
+        use std::io::{Read, Write};
+        use std::os::unix::io::FromRawFd;
+
+        synced(|_| {
+            let mut fds = [0i32; 2];
+            if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+                return ProofRes::Unknown(UnknownReason::Other("Failed to create pipe".to_string()));
+            }
+
+            let pid = unsafe { libc::fork() };
+            if pid < 0 {
+                unsafe {
+                    libc::close(fds[0]);
+                    libc::close(fds[1]);
+                }
+                return ProofRes::Unknown(UnknownReason::Other("Fork failed".to_string()));
+            }
+
+            if pid == 0 {
+                // CHILD PROCESS
+                unsafe { libc::close(fds[0]) };
+                let result = unsafe { self.unsynce_solve() };
+                
+                let (code, msg) = match result {
+                    ProofRes::Proved => (0u8, "".to_string()),
+                    ProofRes::Unprovable => (1u8, "".to_string()),
+                    ProofRes::Unknown(reason) => {
+                        let (c, m) = match reason {
+                            UnknownReason::Timeout => (2, "".to_string()),
+                            UnknownReason::MemoryLimit => (3, "".to_string()),
+                            UnknownReason::Incomplete => (4, "".to_string()),
+                            UnknownReason::Unknown => (5, "".to_string()),
+                            UnknownReason::Other(s) => (6, s),
+                        };
+                        (c, m)
+                    }
+                };
+
+                let mut writer = unsafe { std::fs::File::from_raw_fd(fds[1]) };
+                let _ = writer.write_all(&[code]);
+                if !msg.is_empty() {
+                    let _ = writer.write_all(msg.as_bytes());
+                }
+                
+                // Use _exit to prevent running Rust destructors in the child
+                unsafe { libc::_exit(0) };
+            } else {
+                // PARENT PROCESS
+                unsafe { libc::close(fds[1]) };
+                let mut reader = unsafe { std::fs::File::from_raw_fd(fds[0]) };
+                
+                let mut status = 0i32;
+                unsafe { libc::waitpid(pid, &mut status, 0) };
+
+                // Check if child crashed
+                if libc::WIFSIGNALED(status) {
+                    let sig = libc::WTERMSIG(status);
+                    return ProofRes::Unknown(UnknownReason::Other(format!("Solver process crashed with signal {}", sig)));
+                }
+
+                let mut buf = [0u8; 1];
+                if reader.read_exact(&mut buf).is_err() {
+                    return ProofRes::Unknown(UnknownReason::Other("Failed to read result from solver process".to_string()));
+                }
+
+                match buf[0] {
+                    0 => ProofRes::Proved,
+                    1 => ProofRes::Unprovable,
+                    2 => ProofRes::Unknown(UnknownReason::Timeout),
+                    3 => ProofRes::Unknown(UnknownReason::MemoryLimit),
+                    4 => ProofRes::Unknown(UnknownReason::Incomplete),
+                    5 => ProofRes::Unknown(UnknownReason::Unknown),
+                    6 => {
+                        let mut reason = String::new();
+                        let _ = reader.read_to_string(&mut reason);
+                        ProofRes::Unknown(UnknownReason::Other(reason))
+                    }
+                    _ => ProofRes::Unknown(UnknownReason::Other("Invalid result code from solver process".to_string())),
+                }
+            }
+        })
     }
 
     /// Solves the problem using the Vampire theorem prover.
@@ -1426,6 +2445,62 @@ impl Problem {
     /// ```
     pub fn solve(&mut self) -> ProofRes {
         synced(|_| unsafe { self.unsynce_solve() })
+    }
+
+    /// Converts the problem formulas into Conjunctive Normal Form (CNF) clauses.
+    ///
+    /// This method invokes Vampire's preprocessing engine to clausify all axioms
+    /// and the conjecture.
+    ///
+    /// # Returns
+    ///
+    /// A vector of strings, where each string represents one CNF clause.
+    pub fn clausify(&mut self) -> Vec<String> {
+        synced(|_| unsafe {
+            sys::vampire_prepare_for_next_proof();
+
+            // Apply timeout option if set
+            if let Some(timeout) = self.options.timeout {
+                let ms = timeout.as_millis().max(1);
+                sys::vampire_set_time_limit_milliseconds(ms as i32);
+            }
+
+            let mut unit_ptrs = Vec::new();
+            for axiom in &self.axioms {
+                unit_ptrs.push(sys::vampire_axiom_formula(axiom.id));
+            }
+            if let Some(conjecture) = self.conjecture {
+                unit_ptrs.push(sys::vampire_conjecture_formula(conjecture.id));
+            }
+
+            let problem = sys::vampire_problem_from_units(unit_ptrs.as_mut_ptr(), unit_ptrs.len());
+            
+            // Crucial: perform clausification before extraction
+            sys::vampire_clausify(problem);
+            
+            let mut clauses_ptr: *mut *mut ::std::os::raw::c_char = std::ptr::null_mut();
+            let mut count: usize = 0;
+            
+            let res = sys::vampire_get_cnf(problem, &mut clauses_ptr, &mut count);
+            
+            let mut result = Vec::with_capacity(count);
+            if res == 0 && !clauses_ptr.is_null() {
+                for i in 0..count {
+                    let ptr = *clauses_ptr.add(i);
+                    if !ptr.is_null() {
+                        let c_str = std::ffi::CStr::from_ptr(ptr);
+                        result.push(c_str.to_string_lossy().into_owned());
+                    }
+                }
+                sys::vampire_free_string_array(clauses_ptr, count);
+            }
+            
+            for u in unit_ptrs {
+                sys::vampire_free_unit(u);
+            }
+            
+            result
+        })
     }
 
     /// Solves the problem and, if proved, returns the proof.
@@ -1498,7 +2573,7 @@ impl Problem {
 ///     ProofRes::Unknown(reason) => println!("Unknown: {:?}", reason),
 /// }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProofRes {
     /// The conjecture was successfully proved from the axioms.
     Proved,
@@ -1534,10 +2609,11 @@ pub enum ProofRes {
 ///         UnknownReason::MemoryLimit => println!("Ran out of memory"),
 ///         UnknownReason::Incomplete => println!("Problem uses incomplete logic"),
 ///         UnknownReason::Unknown => println!("Unknown reason"),
+///         UnknownReason::Other(msg) => println!("Error: {}", msg),
 ///     }
 /// }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnknownReason {
     /// The prover exceeded its time limit before finding a proof or counterexample.
     Timeout,
@@ -1553,6 +2629,9 @@ pub enum UnknownReason {
 
     /// The reason is unknown or not specified by Vampire.
     Unknown,
+
+    /// An internal error occurred in the solver or the process isolation layer.
+    Other(String),
 }
 
 impl ProofRes {
@@ -2172,5 +3251,150 @@ mod test {
         // Different formula can be added
         set.insert(f3);
         assert_eq!(set.len(), 2);
+    }
+
+    // TFF tests
+
+    #[test]
+    fn tff_sort_idempotent() {
+        // Registering the same sort twice must return the same index.
+        let s1 = crate::Sort::new("tff_sort_idem_s");
+        let s2 = crate::Sort::new("tff_sort_idem_s");
+        assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn tff_typed_function_idempotent() {
+        // Registering the same typed function twice must return the same symbol.
+        let s = crate::Sort::new("tff_fn_idem_sort");
+        let f1 = Function::typed("tff_fn_idem_f", &[s.clone()], s.clone());
+        let f2 = Function::typed("tff_fn_idem_f", &[s.clone()], s);
+        assert_eq!(f1, f2);
+    }
+
+    #[test]
+    fn tff_typed_predicate_idempotent() {
+        let s = crate::Sort::new("tff_pred_idem_sort");
+        let p1 = Predicate::typed("tff_pred_idem_p", &[s.clone()]);
+        let p2 = Predicate::typed("tff_pred_idem_p", &[s]);
+        assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn tff_socrates_typed() {
+        // TFF version of the Socrates syllogism using a user-defined sort.
+        let person = crate::Sort::new("person_tff");
+
+        let is_mortal = Predicate::typed("mortal_tff", &[person.clone()]);
+        let is_man = Predicate::typed("man_tff", &[person.clone()]);
+        let socrates = Function::typed("socrates_tff", &[], person.clone()).with(());
+
+        let men_are_mortal =
+            crate::forall_typed(person, |x| is_man.with(x) >> is_mortal.with(x));
+
+        let result = Problem::new(Options::new())
+            .with_axiom(is_man.with(socrates))
+            .with_axiom(men_are_mortal)
+            .conjecture(is_mortal.with(socrates))
+            .solve();
+
+        assert_eq!(result, ProofRes::Proved);
+    }
+
+    #[test]
+    fn tff_typed_equality() {
+        // Prove that if father_of(x) = father_of(y) and x = alice then
+        // father_of(alice) = father_of(y), using typed equality.
+
+        let person = crate::Sort::new("person_eq_tff");
+        let father_of = Function::typed("father_of_tff", &[person.clone()], person.clone());
+        let alice = Function::typed("alice_tff", &[], person.clone()).with(());
+
+        let result = Problem::new(Options::new())
+            .with_axiom(crate::forall_typed(person.clone(), |x| {
+                crate::forall_typed(person.clone(), |y| {
+                    father_of.with(x).typed_eq(father_of.with(y), person.clone())
+                        >> father_of.with(alice).typed_eq(father_of.with(y), person.clone())
+                })
+            }))
+            .conjecture(
+                father_of
+                    .with(alice)
+                    .typed_eq(father_of.with(alice), person),
+            )
+            .solve();
+
+        assert_eq!(result, ProofRes::Proved);
+    }
+
+    #[test]
+    fn tff_builtin_sorts_accessible() {
+        // Smoke test: built-in sorts return valid, distinct indices.
+        let i = crate::Sort::default_sort();
+        let z = crate::Sort::int();
+        let r = crate::Sort::real();
+        let q = crate::Sort::rational();
+        // All should be distinct from each other.
+        assert_ne!(i, z);
+        assert_ne!(i, r);
+        assert_ne!(i, q);
+        assert_ne!(z, r);
+        assert_ne!(z, q);
+        assert_ne!(r, q);
+    }
+
+    #[test]
+    fn tff_to_tptp_fof_problem() {
+        // FOF problem: to_tptp() should emit fof(...) syntax.
+        let p = Predicate::new("p_fof_tptp", 1);
+        let x = Function::constant("a_fof_tptp");
+        let mut problem = Problem::new(Options::new());
+        problem.with_axiom(p.with(x));
+        problem.conjecture(p.with(x));
+        let tptp = problem.to_tptp();
+        assert!(tptp.contains("fof(axiom_0, axiom,"), "Expected fof keyword, got: {}", tptp);
+        assert!(tptp.contains("fof(conjecture, conjecture,"), "Expected conjecture, got: {}", tptp);
+    }
+
+    #[test]
+    fn tff_to_tptp_tff_problem() {
+        // TFF problem: to_tptp() should emit tff(...) syntax with type declarations.
+        let list = crate::Sort::new("list_to_tptp");
+        let nil = Function::typed("nil_to_tptp", &[], list.clone());
+        let sorted = Predicate::typed("sorted_to_tptp", &[list.clone()]);
+
+        let mut problem = Problem::new_tff(Options::new());
+        problem.declare_sort(list.clone());
+        problem.declare_function(nil.clone());
+        problem.declare_predicate(sorted.clone());
+        problem.with_axiom(sorted.with(nil.with(())));
+        problem.conjecture(sorted.with(nil.with(())));
+
+        let tptp = problem.to_tptp();
+        assert!(tptp.contains("tff(sort_list_to_tptp, type,"), "Missing sort decl: {}", tptp);
+        assert!(tptp.contains("tff(fn_nil_to_tptp,"), "Missing function decl: {}", tptp);
+        assert!(tptp.contains("tff(pred_sorted_to_tptp_"), "Missing predicate decl: {}", tptp);
+        assert!(tptp.contains("tff(axiom_0, axiom,"), "Expected tff axiom: {}", tptp);
+        assert!(tptp.contains("tff(conjecture, conjecture,"), "Expected tff conjecture: {}", tptp);
+    }
+
+    #[test]
+    fn tff_to_tptp_roundtrip() {
+        // Parse a TPTP string, then emit it back and re-parse to confirm it round-trips.
+        let input = "
+            tff(list_type, type, list_rt: $tType).
+            tff(nil_type, type, nil_rt: list_rt).
+            tff(sorted_type, type, sorted_rt: list_rt > $o).
+            tff(empty_sorted, axiom, sorted_rt(nil_rt)).
+            tff(check, conjecture, sorted_rt(nil_rt)).
+        ";
+        let mut p1 = Problem::from_tptp(input).unwrap();
+        assert_eq!(p1.solve(), ProofRes::Proved);
+
+        let tptp_out = p1.to_tptp();
+        assert!(tptp_out.contains("tff(sort_list_rt, type,"), "Missing sort decl in output: {}", tptp_out);
+
+        let mut p2 = Problem::from_tptp(&tptp_out).unwrap();
+        assert_eq!(p2.solve(), ProofRes::Proved);
     }
 }
