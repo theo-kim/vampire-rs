@@ -1973,6 +1973,7 @@ impl Shr for Formula {
 #[derive(Debug, Clone)]
 pub struct Options {
     timeout: Option<Duration>,
+    extra_options: Vec<(String, String)>,
 }
 
 impl Options {
@@ -1988,7 +1989,7 @@ impl Options {
     /// let opts = Options::new();
     /// ```
     pub fn new() -> Self {
-        Self { timeout: None }
+        Self { timeout: None, extra_options: Vec::new() }
     }
 
     /// Sets the timeout for the prover.
@@ -2010,6 +2011,17 @@ impl Options {
     /// ```
     pub fn timeout(&mut self, duration: Duration) -> &mut Self {
         self.timeout = Some(duration);
+        self
+    }
+
+    /// Sets an arbitrary Vampire option by name and value.
+    ///
+    /// This maps directly to Vampire's `--name value` command-line options.
+    /// For example, `set_option("mode", "casc")` enables CASC portfolio mode.
+    ///
+    /// Returns `&mut Self` to allow chaining.
+    pub fn set_option(&mut self, name: impl Into<String>, value: impl Into<String>) -> &mut Self {
+        self.extra_options.push((name.into(), value.into()));
         self
     }
 }
@@ -2304,6 +2316,13 @@ impl Problem {
             if let Some(timeout) = self.options.timeout {
                 let ms = timeout.as_millis().max(1);
                 sys::vampire_set_time_limit_milliseconds(ms as i32);
+            }
+
+            // Apply extra options (e.g. mode=casc)
+            for (name, value) in &self.options.extra_options {
+                let name_c = CString::new(name.as_str()).expect("valid c string");
+                let value_c = CString::new(value.as_str()).expect("valid c string");
+                sys::vampire_set_option(name_c.as_ptr(), value_c.as_ptr());
             }
 
             let mut units = Vec::new();
@@ -2818,8 +2837,13 @@ impl ProofRule {
                 Self::Axiom
             } else if input_type == sys::vampire_input_type_t_VAMPIRE_NEGATED_CONJECTURE {
                 Self::NegatedConjecture
+            } else if input_type == sys::vampire_input_type_t_VAMPIRE_CONJECTURE {
+                // Original conjecture before negation -- treat as NegatedConjecture
+                // since Vampire proves by refutation.
+                Self::NegatedConjecture
             } else {
-                unreachable!()
+                // Unknown input type (e.g. hypothesis) -- treat as axiom.
+                Self::Axiom
             }
         } else if rule == sys::vampire_inference_rule_t_RECTIFY {
             Self::Rectify

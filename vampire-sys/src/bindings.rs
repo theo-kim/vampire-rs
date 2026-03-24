@@ -374,6 +374,13 @@ unsafe extern "C" {
     pub fn vampire_set_saturation_algorithm(algorithm: *const ::std::os::raw::c_char);
 }
 unsafe extern "C" {
+    #[doc = " Set a generic Vampire option by name and value string.\n Returns 0 on success, -1 on error."]
+    pub fn vampire_set_option(
+        name: *const ::std::os::raw::c_char,
+        value: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+unsafe extern "C" {
     #[doc = " Register a function symbol with the given name and arity.\n For constants, use arity 0.\n @param name Symbol name (null-terminated string)\n @param arity Number of arguments\n @return functor index for use in term construction"]
     pub fn vampire_add_function(
         name: *const ::std::os::raw::c_char,
