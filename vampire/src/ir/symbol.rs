@@ -26,6 +26,7 @@
 /// assert!(i.is_builtin() && z.is_builtin());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Sort {
     name: String,
     is_builtin: bool,
@@ -137,6 +138,7 @@ impl Sort {
 /// assert_eq!(alice.ret_sort(), Some(&person));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Function {
     name: String,
     arity: u32,
@@ -146,6 +148,7 @@ pub struct Function {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum FuncKind {
     Untyped,
     Typed,
@@ -310,6 +313,7 @@ impl Function {
 /// assert!(likes.is_typed());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Predicate {
     name: String,
     arity: u32,
@@ -318,6 +322,7 @@ pub struct Predicate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum PredKind {
     Untyped,
     Typed,
@@ -421,6 +426,7 @@ impl Predicate {
 /// is a direct enum mapping. Future prover backends may implement only a
 /// subset of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Interp {
     Equal,
     IntGreater,

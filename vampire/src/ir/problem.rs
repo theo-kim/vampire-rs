@@ -7,6 +7,7 @@ use super::symbol::{Function, Predicate, Sort};
 
 /// TPTP logic dialect used when this problem is serialised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LogicMode {
     /// First-order form (`fof(...)`).
     Fof,
@@ -42,6 +43,7 @@ impl Default for LogicMode {
 /// assert!(tptp.contains("fof(conjecture, conjecture, P(socrates))."));
 /// ```
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Problem {
     mode: LogicMode,
     sort_decls: Vec<Sort>,

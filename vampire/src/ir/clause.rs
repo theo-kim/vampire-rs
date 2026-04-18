@@ -44,6 +44,7 @@ use super::term::Term;
 /// and canonicalisation rules (for instance `lhs = rhs` is symmetric and
 /// is treated as unordered in dedup hashing).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LitKind {
     /// An ordinary predicate application `p(t1, ..., tn)`.
     Atom {
@@ -60,6 +61,7 @@ pub enum LitKind {
 /// `positive == true` means the literal appears as `p(...)` or `l = r`;
 /// `positive == false` means `~p(...)` or `l != r`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Literal {
     pub positive: bool,
     pub kind:     LitKind,
@@ -114,6 +116,7 @@ impl Literal {
 /// `⊥`, the canonical refutation witness produced by a complete saturation
 /// run.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Clause {
     pub literals: Vec<Literal>,
 }

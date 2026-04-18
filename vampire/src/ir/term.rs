@@ -19,6 +19,7 @@ use super::symbol::Function;
 /// assert_eq!(v.tptp_name(),  "X3");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VarId(pub u32);
 
 impl VarId {
@@ -55,6 +56,7 @@ impl VarId {
 /// let two = Term::int("2");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Term {
     /// A variable reference, e.g. `X0`.
     Var(VarId),

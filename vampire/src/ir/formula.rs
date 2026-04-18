@@ -17,6 +17,7 @@ use super::term::{Term, VarId};
 /// meaning is preserved; only the tree shape differs. Use the enum
 /// variants directly if you want an un-normalised formula.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Formula {
     /// `p(t1, ..., tn)` — a predicate application.
     Atom { pred: Predicate, args: Vec<Term> },
