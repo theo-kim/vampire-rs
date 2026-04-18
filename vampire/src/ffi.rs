@@ -1951,7 +1951,8 @@ impl Problem {
     ///
     /// Returns a `ParseError` if the TPTP input is invalid or unsupported.
     pub fn from_tptp(input: &str) -> Result<Self, crate::tptp::ParseError> {
-        crate::tptp::TptpParser::parse(input)
+        let ir_problem = crate::tptp::TptpParser::parse(input)?;
+        Ok(crate::lower::lower_problem(&ir_problem, Options::new()))
     }
 
     /// Replaces the options on this problem.

@@ -1,3 +1,5 @@
+#![cfg(feature = "integrated-prover")]
+
 use vampire_prover::{
     forall_typed, Function, Interp, IntoTerm, Options, Predicate, Problem, ProofRes, Sort, Term,
 };

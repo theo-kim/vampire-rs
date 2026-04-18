@@ -5,6 +5,8 @@
 //! against the result.  They verify the lowering preserves semantics for
 //! every IR node kind.
 
+#![cfg(feature = "integrated-prover")]
+
 use vampire_prover::{
     ir::{self, Formula as IrF, Function as IrFn, LogicMode, Predicate as IrPd, Sort as IrSort,
          Term as IrT, VarId},

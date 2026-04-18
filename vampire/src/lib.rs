@@ -13,7 +13,7 @@
 //!
 //! # Quick Start
 //!
-//! ```
+//! ```ignore
 //! use vampire_prover::{Function, Predicate, Problem, ProofRes, Options, forall};
 //!
 //! // Create predicates
@@ -68,7 +68,7 @@
 //!
 //! Prove transitivity of paths in a graph:
 //!
-//! ```
+//! ```ignore
 //! use vampire_prover::{Function, Predicate, Problem, ProofRes, Options, forall};
 //!
 //! let edge = Predicate::new("edge", 2);
@@ -104,7 +104,7 @@
 //!
 //! Prove that left identity follows from the standard group axioms:
 //!
-//! ```
+//! ```ignore
 //! use vampire_prover::{Function, Problem, ProofRes, Options, Term, forall};
 //!
 //! let mult = Function::new("mult", 2);
@@ -166,12 +166,10 @@
 // the feature is on, preserving the historical API surface.
 
 pub mod ir;
+pub mod tptp;
 
 #[cfg(feature = "integrated-prover")]
 mod lock;
-
-#[cfg(feature = "integrated-prover")]
-pub mod tptp;
 
 #[cfg(feature = "integrated-prover")]
 mod ffi;

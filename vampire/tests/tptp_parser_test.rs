@@ -1,3 +1,5 @@
+#![cfg(feature = "integrated-prover")]
+
 use vampire_prover::{Problem, ProofRes};
 
 #[test]

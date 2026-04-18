@@ -28,3 +28,24 @@ integrated-prover = ["dep:vampire-sys", "dep:libc"]
 vampire-sys = { path = "../vampire-sys", version = "0.6", optional = true }
 winnow      = "0.7"
 libc        = { version = "0.2", optional = true }
+
+# Examples use the FFI types, so they require the C++ backend.
+[[example]]
+name = "group"
+required-features = ["integrated-prover"]
+
+[[example]]
+name = "group2"
+required-features = ["integrated-prover"]
+
+[[example]]
+name = "name_reuse"
+required-features = ["integrated-prover"]
+
+[[example]]
+name = "debug_problem"
+required-features = ["integrated-prover"]
+
+[[example]]
+name = "bench_index2"
+required-features = ["integrated-prover"]
