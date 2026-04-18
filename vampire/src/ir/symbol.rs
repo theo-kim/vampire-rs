@@ -1,65 +1,144 @@
 //! Symbols — sorts, functions, predicates, interpreted theory symbols.
 //!
 //! All three are pure data: a name, an arity, optional type signature, and a
-//! few flags. They do not carry a Vampire-library identifier; resolution to the
-//! C++ signature happens at lowering time.
-
-use std::sync::Arc;
-
-// -- Sort ---------------------------------------------------------------------
+//! few flags. They do not carry a Vampire-library identifier; resolution to
+//! the C++ signature happens at lowering time.
 
 /// A sort (type) in TFF.
 ///
-/// Built-ins (`$i`, `$int`, `$real`, `$rat`, `$o`) carry the `is_builtin` flag
-/// so `tptp_decl` knows not to emit a redundant declaration for them.
+/// Built-ins (`$i`, `$int`, `$real`, `$rat`, `$o`) carry the `is_builtin`
+/// flag so [`Sort::tptp_decl`] knows not to emit a redundant declaration
+/// for them.
+///
+/// # Examples
+///
+/// ```
+/// use vampire_prover::ir::Sort;
+///
+/// // User-defined sort.
+/// let person = Sort::new("person");
+/// assert_eq!(person.tptp_name(), "person");
+/// assert!(!person.is_builtin());
+///
+/// // Built-in sorts.
+/// let i = Sort::default_sort();
+/// let z = Sort::int();
+/// assert!(i.is_builtin() && z.is_builtin());
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Sort {
-    name: Arc<str>,
+    name: String,
     is_builtin: bool,
 }
 
 impl Sort {
-    /// Creates (or names) a user-defined sort.
+    /// Creates a user-defined sort with the given name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::Sort;
+    ///
+    /// let animal = Sort::new("animal");
+    /// assert_eq!(animal.tptp_name(), "animal");
+    /// ```
     pub fn new(name: &str) -> Self {
-        Self { name: name.into(), is_builtin: false }
+        Self { name: name.to_string(), is_builtin: false }
     }
 
-    /// `$i` — the default untyped individual sort.
+    /// Returns the default individual sort (`$i`).
     pub fn default_sort() -> Self { Self::builtin("$i") }
-    /// `$int`.
-    pub fn int()      -> Self { Self::builtin("$int") }
-    /// `$real`.
-    pub fn real()     -> Self { Self::builtin("$real") }
-    /// `$rat`.
+
+    /// Returns the integer sort (`$int`).
+    pub fn int() -> Self { Self::builtin("$int") }
+
+    /// Returns the real number sort (`$real`).
+    pub fn real() -> Self { Self::builtin("$real") }
+
+    /// Returns the rational number sort (`$rat`).
     pub fn rational() -> Self { Self::builtin("$rat") }
-    /// `$o` — the Boolean sort.
-    pub fn bool()     -> Self { Self::builtin("$o") }
 
-    fn builtin(name: &str) -> Self { Self { name: name.into(), is_builtin: true } }
+    /// Returns the Boolean sort (`$o`).
+    pub fn bool() -> Self { Self::builtin("$o") }
 
-    /// The TPTP identifier for this sort (e.g. `"$int"`, or a user name).
+    fn builtin(name: &str) -> Self {
+        Self { name: name.to_string(), is_builtin: true }
+    }
+
+    /// Returns the TPTP identifier for this sort (e.g. `"$int"`, or a
+    /// user-chosen name).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::Sort;
+    ///
+    /// assert_eq!(Sort::int().tptp_name(),        "$int");
+    /// assert_eq!(Sort::new("person").tptp_name(), "person");
+    /// ```
     pub fn tptp_name(&self) -> &str { &self.name }
 
-    /// `true` for the five built-in TPTP sorts.
+    /// Returns `true` for the five built-in TPTP sorts (`$i`, `$int`,
+    /// `$real`, `$rat`, `$o`).
     pub fn is_builtin(&self) -> bool { self.is_builtin }
 
-    /// `tff(<name>_type, type, <name>: $tType).` — or `None` for built-ins.
+    /// Returns the TPTP type declaration line for this sort, or `None` for
+    /// built-in sorts that need no declaration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::Sort;
+    ///
+    /// let animal = Sort::new("animal");
+    /// assert_eq!(
+    ///     animal.tptp_decl().unwrap(),
+    ///     "tff(animal_type, type, animal: $tType).",
+    /// );
+    ///
+    /// // Built-ins produce no declaration.
+    /// assert_eq!(Sort::int().tptp_decl(), None);
+    /// ```
     pub fn tptp_decl(&self) -> Option<String> {
-        if self.is_builtin { return None; }
-        Some(format!("tff({name}_type, type, {name}: $tType).", name = self.name))
+        if self.is_builtin {
+            return None;
+        }
+        Some(format!(
+            "tff({name}_type, type, {name}: $tType).",
+            name = self.name,
+        ))
     }
 }
 
-// -- Function -----------------------------------------------------------------
-
-/// A function symbol. Arity 0 functions are constants.
+/// A function symbol. Arity-0 functions are constants.
 ///
-/// `arg_sorts` + `ret_sort` are populated when the symbol was created via
-/// [`Function::typed`] or [`Function::interpreted`]; they're empty / `None` for
-/// untyped FOF functions built via [`Function::new`].
+/// `arg_sorts` and `ret_sort` are populated when the symbol is created via
+/// [`Function::typed`] or [`Function::interpreted`]; they are empty / `None`
+/// for untyped FOF functions built via [`Function::new`].
+///
+/// Functions compare equal by `(name, arity, kind, sorts)` — structural
+/// equality on the underlying data. This differs from the FFI type, which
+/// compares by Vampire-internal id.
+///
+/// # Examples
+///
+/// ```
+/// use vampire_prover::ir::{Function, Sort};
+///
+/// // Untyped binary function.
+/// let plus = Function::new("plus", 2);
+/// assert_eq!(plus.arity(), 2);
+/// assert!(!plus.is_typed());
+///
+/// // Typed constant of a user-defined sort.
+/// let person = Sort::new("person");
+/// let alice  = Function::typed("alice", &[], person.clone());
+/// assert_eq!(alice.arity(), 0);
+/// assert_eq!(alice.ret_sort(), Some(&person));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Function {
-    name: Arc<str>,
+    name: String,
     arity: u32,
     arg_sorts: Vec<Sort>,
     ret_sort: Option<Sort>,
@@ -74,10 +153,19 @@ enum FuncKind {
 }
 
 impl Function {
-    /// Untyped FOF function.
+    /// Creates an untyped FOF function symbol with the given name and arity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::Function;
+    ///
+    /// let succ = Function::new("succ", 1);
+    /// assert_eq!(succ.arity(), 1);
+    /// ```
     pub fn new(name: &str, arity: u32) -> Self {
         Self {
-            name: name.into(),
+            name: name.to_string(),
             arity,
             arg_sorts: Vec::new(),
             ret_sort: None,
@@ -85,10 +173,21 @@ impl Function {
         }
     }
 
-    /// Typed TFF function with explicit argument and return sorts.
+    /// Creates a typed TFF function symbol with explicit argument and return
+    /// sorts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::{Function, Sort};
+    ///
+    /// let person = Sort::new("person");
+    /// let father_of = Function::typed("father_of", &[person.clone()], person);
+    /// assert!(father_of.is_typed());
+    /// ```
     pub fn typed(name: &str, arg_sorts: &[Sort], return_sort: Sort) -> Self {
         Self {
-            name: name.into(),
+            name: name.to_string(),
             arity: arg_sorts.len() as u32,
             arg_sorts: arg_sorts.to_vec(),
             ret_sort: Some(return_sort),
@@ -96,34 +195,89 @@ impl Function {
         }
     }
 
-    /// Interpreted theory function (e.g. `$sum`, `$product`).
+    /// Creates an interpreted theory function (e.g. `$sum`, `$product`).
+    ///
+    /// The arity is derived from the interpretation (unary for
+    /// `IntUnaryMinus`, `IntSuccessor`, `IntAbs`; binary otherwise).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::{Function, Interp};
+    ///
+    /// let plus = Function::interpreted("$sum", Interp::IntPlus);
+    /// assert_eq!(plus.arity(), 2);
+    /// ```
     pub fn interpreted(name: &str, interp: Interp) -> Self {
-        let arity = interp.default_arity();
         Self {
-            name: name.into(),
-            arity,
+            name: name.to_string(),
+            arity: interp.default_arity(),
             arg_sorts: Vec::new(),
             ret_sort: None,
             kind: FuncKind::Interpreted(interp),
         }
     }
 
-    pub fn name(&self)      -> &str { &self.name }
-    pub fn arity(&self)     -> u32  { self.arity }
+    /// The function's name.
+    pub fn name(&self) -> &str { &self.name }
+
+    /// The function's arity (number of arguments).
+    pub fn arity(&self) -> u32 { self.arity }
+
+    /// The argument sorts. Empty for untyped or interpreted functions.
     pub fn arg_sorts(&self) -> &[Sort] { &self.arg_sorts }
-    pub fn ret_sort(&self)  -> Option<&Sort> { self.ret_sort.as_ref() }
-    pub fn is_typed(&self)  -> bool { matches!(self.kind, FuncKind::Typed) }
-    pub fn interp(&self)    -> Option<Interp> {
-        match self.kind { FuncKind::Interpreted(i) => Some(i), _ => None }
+
+    /// The return sort. `None` for untyped or interpreted functions.
+    pub fn ret_sort(&self) -> Option<&Sort> { self.ret_sort.as_ref() }
+
+    /// `true` if the function was constructed via [`Function::typed`].
+    pub fn is_typed(&self) -> bool { matches!(self.kind, FuncKind::Typed) }
+
+    /// The interpretation, if any, attached to this function.
+    pub fn interp(&self) -> Option<Interp> {
+        match self.kind {
+            FuncKind::Interpreted(i) => Some(i),
+            _ => None,
+        }
     }
 
-    /// `tff(fn_<name>, type, <name>: <arg_sorts> > <ret_sort>).` — or `None`
-    /// for untyped / interpreted.
+    /// Returns the TPTP type declaration line for this function, or `None`
+    /// for untyped and interpreted functions (which need no declaration).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::{Function, Sort};
+    ///
+    /// let person = Sort::new("person");
+    /// let nil    = Function::typed("nil", &[], person.clone());
+    /// assert_eq!(
+    ///     nil.tptp_decl().unwrap(),
+    ///     "tff(fn_nil, type, nil: person).",
+    /// );
+    ///
+    /// let child_of = Function::typed(
+    ///     "child_of",
+    ///     &[person.clone(), person.clone()],
+    ///     person,
+    /// );
+    /// assert_eq!(
+    ///     child_of.tptp_decl().unwrap(),
+    ///     "tff(fn_child_of, type, child_of: (person * person) > person).",
+    /// );
+    ///
+    /// assert_eq!(Function::new("f", 2).tptp_decl(), None);
+    /// ```
     pub fn tptp_decl(&self) -> Option<String> {
-        if !self.is_typed() { return None; }
+        if !self.is_typed() {
+            return None;
+        }
         let ret = self.ret_sort.as_ref().unwrap().tptp_name();
         if self.arg_sorts.is_empty() {
-            return Some(format!("tff(fn_{name}, type, {name}: {ret}).", name = self.name, ret = ret));
+            return Some(format!(
+                "tff(fn_{name}, type, {name}: {ret}).",
+                name = self.name, ret = ret,
+            ));
         }
         let args: Vec<&str> = self.arg_sorts.iter().map(|s| s.tptp_name()).collect();
         let args_str = if args.len() == 1 {
@@ -138,12 +292,26 @@ impl Function {
     }
 }
 
-// -- Predicate ----------------------------------------------------------------
-
-/// A predicate symbol. Equivalent to a function returning `$o`.
+/// A predicate symbol. Equivalent to a function returning `$o`, but kept
+/// as a distinct type to match TPTP's syntactic distinction.
+///
+/// # Examples
+///
+/// ```
+/// use vampire_prover::ir::{Predicate, Sort};
+///
+/// let mortal = Predicate::new("mortal", 1);
+/// assert_eq!(mortal.arity(), 1);
+/// assert!(!mortal.is_typed());
+///
+/// let person = Sort::new("person");
+/// let likes  = Predicate::typed("likes", &[person.clone(), person]);
+/// assert_eq!(likes.arity(), 2);
+/// assert!(likes.is_typed());
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
-    name: Arc<str>,
+    name: String,
     arity: u32,
     arg_sorts: Vec<Sort>,
     kind: PredKind,
@@ -157,39 +325,77 @@ enum PredKind {
 }
 
 impl Predicate {
+    /// Creates an untyped FOF predicate symbol with the given name and arity.
     pub fn new(name: &str, arity: u32) -> Self {
-        Self { name: name.into(), arity, arg_sorts: Vec::new(), kind: PredKind::Untyped }
+        Self {
+            name: name.to_string(),
+            arity,
+            arg_sorts: Vec::new(),
+            kind: PredKind::Untyped,
+        }
     }
 
+    /// Creates a typed TFF predicate symbol with explicit argument sorts.
     pub fn typed(name: &str, arg_sorts: &[Sort]) -> Self {
         Self {
-            name: name.into(),
+            name: name.to_string(),
             arity: arg_sorts.len() as u32,
             arg_sorts: arg_sorts.to_vec(),
             kind: PredKind::Typed,
         }
     }
 
+    /// Creates an interpreted theory predicate (e.g. `$less`, `$greater`).
     pub fn interpreted(name: &str, interp: Interp) -> Self {
         Self {
-            name: name.into(),
+            name: name.to_string(),
             arity: interp.default_arity(),
             arg_sorts: Vec::new(),
             kind: PredKind::Interpreted(interp),
         }
     }
 
-    pub fn name(&self)      -> &str { &self.name }
-    pub fn arity(&self)     -> u32  { self.arity }
+    /// The predicate's name.
+    pub fn name(&self) -> &str { &self.name }
+
+    /// The predicate's arity (number of arguments).
+    pub fn arity(&self) -> u32 { self.arity }
+
+    /// The argument sorts. Empty for untyped or interpreted predicates.
     pub fn arg_sorts(&self) -> &[Sort] { &self.arg_sorts }
-    pub fn is_typed(&self)  -> bool { matches!(self.kind, PredKind::Typed) }
-    pub fn interp(&self)    -> Option<Interp> {
-        match self.kind { PredKind::Interpreted(i) => Some(i), _ => None }
+
+    /// `true` if the predicate was constructed via [`Predicate::typed`].
+    pub fn is_typed(&self) -> bool { matches!(self.kind, PredKind::Typed) }
+
+    /// The interpretation, if any, attached to this predicate.
+    pub fn interp(&self) -> Option<Interp> {
+        match self.kind {
+            PredKind::Interpreted(i) => Some(i),
+            _ => None,
+        }
     }
 
-    /// `tff(pred_<name>_<arity>, type, <name>: <sorts> > $o).` — or `None`.
+    /// Returns the TPTP type declaration line for this predicate, or `None`
+    /// for untyped and interpreted predicates.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::{Predicate, Sort};
+    ///
+    /// let person = Sort::new("person");
+    /// let likes  = Predicate::typed("likes", &[person.clone(), person]);
+    /// assert_eq!(
+    ///     likes.tptp_decl().unwrap(),
+    ///     "tff(pred_likes_2, type, likes: (person * person) > $o).",
+    /// );
+    ///
+    /// assert_eq!(Predicate::new("P", 3).tptp_decl(), None);
+    /// ```
     pub fn tptp_decl(&self) -> Option<String> {
-        if !self.is_typed() { return None; }
+        if !self.is_typed() {
+            return None;
+        }
         if self.arg_sorts.is_empty() {
             return Some(format!(
                 "tff(pred_{name}_{arity}, type, {name}: $o).",
@@ -209,26 +415,49 @@ impl Predicate {
     }
 }
 
-// -- Interpreted theory symbols ----------------------------------------------
-
 /// Interpreted theory symbols for arithmetic and comparison.
 ///
-/// Kept 1:1 with the variants used by sumo-kb and vampire-sys; future prover
-/// backends may expose a subset.
+/// Matches the variant set used by the FFI `Interp` 1:1 so that lowering
+/// is a direct enum mapping. Future prover backends may implement only a
+/// subset of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Interp {
     Equal,
-    IntGreater,    IntGreaterEqual, IntLess,        IntLessEqual,
-    IntDivides,    IntSuccessor,    IntUnaryMinus,
-    IntPlus,       IntMinus,        IntMultiply,    IntAbs,
-    RatGreater,    RatGreaterEqual, RatLess,        RatLessEqual,
-    RatPlus,       RatMinus,        RatMultiply,    RatQuotient,
-    RealGreater,   RealGreaterEqual, RealLess,      RealLessEqual,
-    RealPlus,      RealMinus,       RealMultiply,   RealQuotient,
+    IntGreater,
+    IntGreaterEqual,
+    IntLess,
+    IntLessEqual,
+    IntDivides,
+    IntSuccessor,
+    IntUnaryMinus,
+    IntPlus,
+    IntMinus,
+    IntMultiply,
+    IntAbs,
+    RatGreater,
+    RatGreaterEqual,
+    RatLess,
+    RatLessEqual,
+    RatPlus,
+    RatMinus,
+    RatMultiply,
+    RatQuotient,
+    RealGreater,
+    RealGreaterEqual,
+    RealLess,
+    RealLessEqual,
+    RealPlus,
+    RealMinus,
+    RealMultiply,
+    RealQuotient,
 }
 
 impl Interp {
-    /// Default arity used when only a name + interp is supplied.
+    /// Default arity used when the caller only supplies a name plus an
+    /// interpretation (the usual TPTP convention).
+    ///
+    /// Unary: `IntUnaryMinus`, `IntSuccessor`, `IntAbs`. All others are
+    /// binary.
     pub fn default_arity(self) -> u32 {
         match self {
             Interp::IntUnaryMinus | Interp::IntSuccessor | Interp::IntAbs => 1,

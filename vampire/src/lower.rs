@@ -2,16 +2,15 @@
 //! by the linked Vampire C++ library.
 //!
 //! The lowering is mechanical: each IR node is rebuilt as the corresponding
-//! FFI node, walking the tree in a single pass.  The FFI constructors
-//! themselves take the global lock (`synced`) per call and perform symbol
-//! interning on the Vampire side, so repeated references to the same IR
-//! symbol resolve to the same C++ signature entry.
+//! FFI node in a single walk of the tree. The FFI constructors take the
+//! global lock (`synced`) per call and perform symbol interning on the
+//! Vampire side, so repeated references to the same IR symbol resolve to
+//! the same C++ signature entry.
 //!
-//! A problem lowered here is completely independent of the IR it came from —
-//! the returned `Problem` can be mutated (extra axioms appended, options
+//! A problem lowered here is independent of the IR it came from — the
+//! returned [`SysProblem`] can be mutated (extra axioms appended, options
 //! changed) before calling `solve_and_prove`.
 
-use crate::ir::{self, Options};
 use crate::ffi::{
     Formula   as SysFormula,
     Function  as SysFunction,
@@ -21,29 +20,54 @@ use crate::ffi::{
     Sort      as SysSort,
     Term      as SysTerm,
 };
-
-// -- Public entry point -------------------------------------------------------
+use crate::ir::{self, Options};
 
 /// Rebuild an [`ir::Problem`] as an FFI [`SysProblem`] ready for solving.
 ///
-/// `opts` is consumed and set on the returned problem.
+/// `opts` is set on the returned problem.
+///
+/// # Examples
+///
+/// ```no_run
+/// use vampire_prover::{lower_problem, Options};
+/// use vampire_prover::ir::{Formula, Function, Predicate, Problem, Term};
+///
+/// let p        = Predicate::new("P", 1);
+/// let socrates = Term::constant(Function::new("socrates", 0));
+///
+/// let mut problem = Problem::new();
+/// problem.with_axiom(Formula::atom(p.clone(), vec![socrates.clone()]));
+/// problem.conjecture(Formula::atom(p, vec![socrates]));
+///
+/// let result = lower_problem(&problem, Options::new()).solve();
+/// ```
 pub fn lower_problem(p: &ir::Problem, opts: Options) -> SysProblem {
     let mode_tff = matches!(p.mode(), ir::LogicMode::Tff);
-    let mut out = if mode_tff { SysProblem::new_tff(opts) } else { SysProblem::new(opts) };
+    let mut out = if mode_tff {
+        SysProblem::new_tff(opts)
+    } else {
+        SysProblem::new(opts)
+    };
 
-    for s in p.sort_decls()   { out.declare_sort(lower_sort(s)); }
-    for f in p.fn_decls()     { out.declare_function(lower_function(f)); }
-    for pd in p.pred_decls()  { out.declare_predicate(lower_predicate(pd)); }
+    for s in p.sort_decls() {
+        out.declare_sort(lower_sort(s));
+    }
+    for f in p.fn_decls() {
+        out.declare_function(lower_function(f));
+    }
+    for pd in p.pred_decls() {
+        out.declare_predicate(lower_predicate(pd));
+    }
 
-    for ax in p.axioms()      { out.with_axiom(lower_formula(ax)); }
+    for ax in p.axioms() {
+        out.with_axiom(lower_formula(ax));
+    }
     if let Some(c) = p.conjecture_ref() {
         out.conjecture(lower_formula(c));
     }
 
     out
 }
-
-// -- Symbol lowering ----------------------------------------------------------
 
 fn lower_sort(s: &ir::Sort) -> SysSort {
     match s.tptp_name() {
@@ -63,7 +87,8 @@ fn lower_function(f: &ir::Function) -> SysFunction {
     }
     if f.is_typed() {
         let arg_sorts: Vec<SysSort> = f.arg_sorts().iter().map(lower_sort).collect();
-        let ret_sort = f.ret_sort()
+        let ret_sort = f
+            .ret_sort()
             .map(lower_sort)
             .expect("typed ir::Function missing return sort");
         return SysFunction::typed(f.name(), &arg_sorts, ret_sort);
@@ -83,41 +108,37 @@ fn lower_predicate(p: &ir::Predicate) -> SysPredicate {
 }
 
 fn lower_interp(i: ir::Interp) -> SysInterp {
-    use SysInterp as F;
-    use ir::Interp as I;
     match i {
-        I::Equal            => F::Equal,
-        I::IntGreater       => F::IntGreater,
-        I::IntGreaterEqual  => F::IntGreaterEqual,
-        I::IntLess          => F::IntLess,
-        I::IntLessEqual     => F::IntLessEqual,
-        I::IntDivides       => F::IntDivides,
-        I::IntSuccessor     => F::IntSuccessor,
-        I::IntUnaryMinus    => F::IntUnaryMinus,
-        I::IntPlus          => F::IntPlus,
-        I::IntMinus         => F::IntMinus,
-        I::IntMultiply      => F::IntMultiply,
-        I::IntAbs           => F::IntAbs,
-        I::RatGreater       => F::RatGreater,
-        I::RatGreaterEqual  => F::RatGreaterEqual,
-        I::RatLess          => F::RatLess,
-        I::RatLessEqual     => F::RatLessEqual,
-        I::RatPlus          => F::RatPlus,
-        I::RatMinus         => F::RatMinus,
-        I::RatMultiply      => F::RatMultiply,
-        I::RatQuotient      => F::RatQuotient,
-        I::RealGreater      => F::RealGreater,
-        I::RealGreaterEqual => F::RealGreaterEqual,
-        I::RealLess         => F::RealLess,
-        I::RealLessEqual    => F::RealLessEqual,
-        I::RealPlus         => F::RealPlus,
-        I::RealMinus        => F::RealMinus,
-        I::RealMultiply     => F::RealMultiply,
-        I::RealQuotient     => F::RealQuotient,
+        ir::Interp::Equal            => SysInterp::Equal,
+        ir::Interp::IntGreater       => SysInterp::IntGreater,
+        ir::Interp::IntGreaterEqual  => SysInterp::IntGreaterEqual,
+        ir::Interp::IntLess          => SysInterp::IntLess,
+        ir::Interp::IntLessEqual     => SysInterp::IntLessEqual,
+        ir::Interp::IntDivides       => SysInterp::IntDivides,
+        ir::Interp::IntSuccessor     => SysInterp::IntSuccessor,
+        ir::Interp::IntUnaryMinus    => SysInterp::IntUnaryMinus,
+        ir::Interp::IntPlus          => SysInterp::IntPlus,
+        ir::Interp::IntMinus         => SysInterp::IntMinus,
+        ir::Interp::IntMultiply      => SysInterp::IntMultiply,
+        ir::Interp::IntAbs           => SysInterp::IntAbs,
+        ir::Interp::RatGreater       => SysInterp::RatGreater,
+        ir::Interp::RatGreaterEqual  => SysInterp::RatGreaterEqual,
+        ir::Interp::RatLess          => SysInterp::RatLess,
+        ir::Interp::RatLessEqual     => SysInterp::RatLessEqual,
+        ir::Interp::RatPlus          => SysInterp::RatPlus,
+        ir::Interp::RatMinus         => SysInterp::RatMinus,
+        ir::Interp::RatMultiply      => SysInterp::RatMultiply,
+        ir::Interp::RatQuotient      => SysInterp::RatQuotient,
+        ir::Interp::RealGreater      => SysInterp::RealGreater,
+        ir::Interp::RealGreaterEqual => SysInterp::RealGreaterEqual,
+        ir::Interp::RealLess         => SysInterp::RealLess,
+        ir::Interp::RealLessEqual    => SysInterp::RealLessEqual,
+        ir::Interp::RealPlus         => SysInterp::RealPlus,
+        ir::Interp::RealMinus        => SysInterp::RealMinus,
+        ir::Interp::RealMultiply     => SysInterp::RealMultiply,
+        ir::Interp::RealQuotient     => SysInterp::RealQuotient,
     }
 }
-
-// -- Term ---------------------------------------------------------------------
 
 fn lower_term(t: &ir::Term) -> SysTerm {
     match t {
@@ -136,8 +157,6 @@ fn lower_term(t: &ir::Term) -> SysTerm {
         }
     }
 }
-
-// -- Formula ------------------------------------------------------------------
 
 fn lower_formula(f: &ir::Formula) -> SysFormula {
     match f {

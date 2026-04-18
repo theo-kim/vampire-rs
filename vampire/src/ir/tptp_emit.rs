@@ -1,20 +1,18 @@
 //! TPTP serialisation — pure-Rust walkers over [`Term`] and [`Formula`].
 //!
-//! The output shape matches Vampire's accepted TPTP dialect for FOF (`fof(...)`)
-//! and TFF (`tff(...)`). Precedence is encoded with minimal parenthesisation: we
-//! parenthesise only when a child's top-level operator is weaker than the parent.
+//! The output shape matches Vampire's accepted TPTP dialect for FOF
+//! (`fof(...)`) and TFF (`tff(...)`). Sub-formula parenthesisation is
+//! minimal: a parent only parenthesises a child whose top-level operator
+//! binds more loosely than its own.
 
 use std::fmt::Write as _;
 
+use super::formula::Formula;
 use super::symbol::Interp;
 use super::term::Term;
-use super::formula::Formula;
 
-// -- Precedence ----------------------------------------------------------------
-//
-// Lowest → highest. Quantifiers bind tightest; Iff is weakest.
-// We use this to decide when to parenthesise sub-formulas during emission.
-
+/// Operator precedence used to decide when a child formula needs to be
+/// parenthesised.  Lowest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Prec {
     Iff = 0,
@@ -28,16 +26,16 @@ enum Prec {
 
 fn top_prec(f: &Formula) -> Prec {
     match f {
-        Formula::Iff(..)                              => Prec::Iff,
-        Formula::Imp(..)                              => Prec::Imp,
-        Formula::Or(..)                               => Prec::Or,
-        Formula::And(..)                              => Prec::And,
-        Formula::Not(_)                               => Prec::Not,
-        Formula::Forall(..)      | Formula::ForallTyped(..) |
-        Formula::Exists(..)      | Formula::ExistsTyped(..) => Prec::Quant,
-        Formula::Atom { .. }     | Formula::Eq(..)    |
-        Formula::EqTyped { .. }  | Formula::True      |
-        Formula::False                                => Prec::Atom,
+        Formula::Iff(..) => Prec::Iff,
+        Formula::Imp(..) => Prec::Imp,
+        Formula::Or(..)  => Prec::Or,
+        Formula::And(..) => Prec::And,
+        Formula::Not(_)  => Prec::Not,
+        Formula::Forall(..)      | Formula::ForallTyped(..)
+        | Formula::Exists(..)    | Formula::ExistsTyped(..) => Prec::Quant,
+        Formula::Atom { .. }     | Formula::Eq(..)
+        | Formula::EqTyped { .. }
+        | Formula::True          | Formula::False          => Prec::Atom,
     }
 }
 
@@ -51,8 +49,6 @@ fn emit_sub(out: &mut String, f: &Formula, parent: Prec) {
     }
 }
 
-// -- Term ---------------------------------------------------------------------
-
 pub(crate) fn term_to_tptp(t: &Term) -> String {
     let mut s = String::new();
     emit_term(&mut s, t);
@@ -61,26 +57,26 @@ pub(crate) fn term_to_tptp(t: &Term) -> String {
 
 fn emit_term(out: &mut String, t: &Term) {
     match t {
-        Term::Var(v) => { let _ = write!(out, "X{}", v.index()); }
+        Term::Var(v) => {
+            let _ = write!(out, "X{}", v.index());
+        }
         Term::Apply(func, args) => {
             let name = interp_name(func.interp()).unwrap_or_else(|| func.name().to_string());
             out.push_str(&name);
             if !args.is_empty() {
                 out.push('(');
                 for (i, a) in args.iter().enumerate() {
-                    if i > 0 { out.push(','); }
+                    if i > 0 {
+                        out.push(',');
+                    }
                     emit_term(out, a);
                 }
                 out.push(')');
             }
         }
-        Term::Int(v)      => out.push_str(v),
-        Term::Real(v)     => out.push_str(v),
-        Term::Rational(v) => out.push_str(v),
+        Term::Int(v) | Term::Real(v) | Term::Rational(v) => out.push_str(v),
     }
 }
-
-// -- Formula ------------------------------------------------------------------
 
 pub(crate) fn formula_to_tptp(f: &Formula) -> String {
     let mut s = String::new();
@@ -99,7 +95,9 @@ fn emit_formula(out: &mut String, f: &Formula) {
             if !args.is_empty() {
                 out.push('(');
                 for (i, a) in args.iter().enumerate() {
-                    if i > 0 { out.push(','); }
+                    if i > 0 {
+                        out.push(',');
+                    }
                     emit_term(out, a);
                 }
                 out.push(')');
@@ -112,9 +110,10 @@ fn emit_formula(out: &mut String, f: &Formula) {
             emit_term(out, rhs);
         }
 
+        // TFF equality serialises the same way as FOF equality; the sort
+        // is carried for the prover's internal type-checking, not for the
+        // surface syntax.
         Formula::EqTyped { lhs, rhs, sort: _ } => {
-            // TFF equality is written the same way; the sort is carried for
-            // the prover's internal type-checking, not for serialisation.
             emit_term(out, lhs);
             out.push_str(" = ");
             emit_term(out, rhs);
@@ -161,54 +160,61 @@ fn emit_formula(out: &mut String, f: &Formula) {
 
 fn emit_nary(out: &mut String, parts: &[Formula], sep: &str, self_prec: Prec) {
     for (i, p) in parts.iter().enumerate() {
-        if i > 0 { out.push_str(sep); }
+        if i > 0 {
+            out.push_str(sep);
+        }
         emit_sub(out, p, self_prec);
     }
 }
 
-// -- Interpreted symbol names -------------------------------------------------
-
 fn interp_name(i: Option<Interp>) -> Option<String> {
     i.map(|i| match i {
         Interp::Equal            => "=".to_string(),
-        Interp::IntGreater       => "$greater".into(),
-        Interp::IntGreaterEqual  => "$greatereq".into(),
-        Interp::IntLess          => "$less".into(),
-        Interp::IntLessEqual     => "$lesseq".into(),
+        Interp::IntGreater       | Interp::RatGreater      | Interp::RealGreater      => "$greater".into(),
+        Interp::IntGreaterEqual  | Interp::RatGreaterEqual | Interp::RealGreaterEqual => "$greatereq".into(),
+        Interp::IntLess          | Interp::RatLess         | Interp::RealLess         => "$less".into(),
+        Interp::IntLessEqual     | Interp::RatLessEqual    | Interp::RealLessEqual    => "$lesseq".into(),
         Interp::IntDivides       => "$divides".into(),
         Interp::IntSuccessor     => "$succ".into(),
         Interp::IntUnaryMinus    => "$uminus".into(),
-        Interp::IntPlus          => "$sum".into(),
-        Interp::IntMinus         => "$difference".into(),
-        Interp::IntMultiply      => "$product".into(),
+        Interp::IntPlus          | Interp::RatPlus         | Interp::RealPlus         => "$sum".into(),
+        Interp::IntMinus         | Interp::RatMinus        | Interp::RealMinus        => "$difference".into(),
+        Interp::IntMultiply      | Interp::RatMultiply     | Interp::RealMultiply     => "$product".into(),
         Interp::IntAbs           => "$abs".into(),
-        Interp::RatGreater       => "$greater".into(),
-        Interp::RatGreaterEqual  => "$greatereq".into(),
-        Interp::RatLess          => "$less".into(),
-        Interp::RatLessEqual     => "$lesseq".into(),
-        Interp::RatPlus          => "$sum".into(),
-        Interp::RatMinus         => "$difference".into(),
-        Interp::RatMultiply      => "$product".into(),
-        Interp::RatQuotient      => "$quotient".into(),
-        Interp::RealGreater      => "$greater".into(),
-        Interp::RealGreaterEqual => "$greatereq".into(),
-        Interp::RealLess         => "$less".into(),
-        Interp::RealLessEqual    => "$lesseq".into(),
-        Interp::RealPlus         => "$sum".into(),
-        Interp::RealMinus        => "$difference".into(),
-        Interp::RealMultiply     => "$product".into(),
-        Interp::RealQuotient     => "$quotient".into(),
+        Interp::RatQuotient      | Interp::RealQuotient    => "$quotient".into(),
     })
 }
 
-// -- Public convenience wrappers ----------------------------------------------
-
 impl Term {
-    /// Serialise this term to TPTP syntax.
-    pub fn to_tptp(&self) -> String { term_to_tptp(self) }
+    /// Serialises this term to TPTP syntax.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::{Function, Term};
+    ///
+    /// let f = Function::new("f", 2);
+    /// let t = Term::apply(f, vec![Term::var(0), Term::int("1")]);
+    /// assert_eq!(t.to_tptp(), "f(X0,1)");
+    /// ```
+    pub fn to_tptp(&self) -> String {
+        term_to_tptp(self)
+    }
 }
 
 impl Formula {
-    /// Serialise this formula to TPTP syntax (no enclosing parentheses).
-    pub fn to_tptp(&self) -> String { formula_to_tptp(self) }
+    /// Serialises this formula to TPTP syntax (no enclosing parentheses).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::ir::{Formula, Predicate, Term};
+    ///
+    /// let p = Predicate::new("P", 1);
+    /// let f = Formula::atom(p, vec![Term::var(0)]);
+    /// assert_eq!(f.to_tptp(), "P(X0)");
+    /// ```
+    pub fn to_tptp(&self) -> String {
+        formula_to_tptp(self)
+    }
 }

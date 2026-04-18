@@ -7,9 +7,7 @@
 //!
 //! The parser lives outside the `integrated-prover` feature gate -- it's pure Rust.
 
-use crate::ir::{
-    Formula, Function, Interp, LogicMode, Predicate, Problem, Sort, Term, VarId,
-};
+use crate::ir::{Formula, Function, Interp, Predicate, Problem, Sort, Term, VarId};
 use std::collections::HashMap;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, delimited, opt, separated};
@@ -17,8 +15,6 @@ use winnow::prelude::*;
 use winnow::token::take_while;
 
 type PResult<O> = winnow::Result<O>;
-
-// -- Errors -------------------------------------------------------------------
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -34,8 +30,6 @@ impl std::fmt::Display for ParseError {
 }
 
 impl std::error::Error for ParseError {}
-
-// -- Context ------------------------------------------------------------------
 
 /// Per-parse state: symbol tables, variable scopes, detected dialect.
 #[derive(Debug)]
@@ -126,8 +120,6 @@ impl Context {
     }
 }
 
-// -- Public entry point -------------------------------------------------------
-
 pub struct TptpParser;
 
 impl TptpParser {
@@ -201,8 +193,6 @@ impl TptpParser {
     }
 }
 
-// -- Lexing helpers -----------------------------------------------------------
-
 fn skip_comments_and_whitespace(mut input: &str) -> &str {
     loop {
         let prev = input;
@@ -250,8 +240,6 @@ fn punct<'a, 'ctx>(c: char) -> impl FnMut(&mut Stream<'a, 'ctx>) -> PResult<char
         Ok(res)
     }
 }
-
-// -- Top-level clauses --------------------------------------------------------
 
 fn parse_fof<'a, 'ctx>(input: &mut Stream<'a, 'ctx>) -> PResult<(&'a str, &'a str, Formula)> {
     let _    = op("fof").parse_next(input)?;
@@ -356,8 +344,6 @@ fn parse_tff_type_expr<'a, 'ctx>(symbol: &'a str, input: &mut Stream<'a, 'ctx>) 
 
     Ok(())
 }
-
-// -- Formula parser (precedence climbing) -------------------------------------
 
 fn parse_formula<'a, 'ctx>(input: &mut Stream<'a, 'ctx>) -> PResult<Formula> {
     parse_equiv(input)
@@ -564,5 +550,3 @@ fn parse_term<'a, 'ctx>(input: &mut Stream<'a, 'ctx>) -> PResult<Term> {
     }
 }
 
-// Silence the LogicMode import when `ir::Problem::new_tff` inference is sufficient.
-const _: Option<LogicMode> = None;
