@@ -739,3 +739,52 @@ unsafe extern "C" {
         sort_index: ::std::os::raw::c_uint,
     ) -> *mut vampire_literal_t;
 }
+
+// ---- Structured Literal / Term readers (hand-added, matching header) -------
+
+unsafe extern "C" {
+    pub fn vampire_literal_predicate(lit: *mut vampire_literal_t) -> ::std::os::raw::c_uint;
+}
+unsafe extern "C" {
+    pub fn vampire_literal_is_positive(lit: *mut vampire_literal_t) -> bool;
+}
+unsafe extern "C" {
+    pub fn vampire_literal_is_equality(lit: *mut vampire_literal_t) -> bool;
+}
+unsafe extern "C" {
+    pub fn vampire_literal_arity(lit: *mut vampire_literal_t) -> usize;
+}
+unsafe extern "C" {
+    pub fn vampire_literal_arg(
+        lit: *mut vampire_literal_t,
+        i: usize,
+    ) -> *mut vampire_term_t;
+}
+unsafe extern "C" {
+    pub fn vampire_term_is_var(term: *mut vampire_term_t) -> bool;
+}
+unsafe extern "C" {
+    pub fn vampire_term_var_index(term: *mut vampire_term_t) -> ::std::os::raw::c_uint;
+}
+unsafe extern "C" {
+    pub fn vampire_term_functor(term: *mut vampire_term_t) -> ::std::os::raw::c_uint;
+}
+unsafe extern "C" {
+    pub fn vampire_term_arity(term: *mut vampire_term_t) -> usize;
+}
+unsafe extern "C" {
+    pub fn vampire_term_arg(
+        term: *mut vampire_term_t,
+        i: usize,
+    ) -> *mut vampire_term_t;
+}
+unsafe extern "C" {
+    pub fn vampire_functor_name(
+        functor_idx: ::std::os::raw::c_uint,
+    ) -> *const ::std::os::raw::c_char;
+}
+unsafe extern "C" {
+    pub fn vampire_predicate_name(
+        predicate_idx: ::std::os::raw::c_uint,
+    ) -> *const ::std::os::raw::c_char;
+}
