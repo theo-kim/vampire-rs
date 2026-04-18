@@ -1950,8 +1950,8 @@ impl Problem {
     /// # Errors
     ///
     /// Returns a `ParseError` if the TPTP input is invalid or unsupported.
-    pub fn from_tptp(input: &str) -> Result<Self, tptp::ParseError> {
-        tptp::TptpParser::parse(input)
+    pub fn from_tptp(input: &str) -> Result<Self, crate::tptp::ParseError> {
+        crate::tptp::TptpParser::parse(input)
     }
 
     /// Replaces the options on this problem.
