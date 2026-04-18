@@ -178,3 +178,9 @@ mod ffi;
 
 #[cfg(feature = "integrated-prover")]
 pub use ffi::*;
+
+#[cfg(feature = "integrated-prover")]
+pub mod lower;
+
+#[cfg(feature = "integrated-prover")]
+pub use lower::lower_problem;
