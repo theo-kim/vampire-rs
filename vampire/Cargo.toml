@@ -11,7 +11,20 @@ categories = ["science", "mathematics"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 
+[features]
+# Default pulls in the C++-backed integrated prover so existing consumers
+# are unaffected.
+default = ["integrated-prover"]
+
+# When enabled: compiles the FFI module (`ffi`) which links vampire-sys
+# (Vampire C++ library via CMake) and exposes the historical API surface
+# (`Formula`, `Term`, `Problem`, `solve_and_prove`, ...). Without this
+# feature only the pure-Rust `ir` module is available -- useful for
+# front-ends that construct TPTP problems and hand them to an external
+# prover subprocess.
+integrated-prover = ["dep:vampire-sys", "dep:libc"]
+
 [dependencies]
-vampire-sys = { path = "../vampire-sys", version = "0.6" }
-winnow = "0.7"
-libc = "0.2"
+vampire-sys = { path = "../vampire-sys", version = "0.6", optional = true }
+winnow      = "0.7"
+libc        = { version = "0.2", optional = true }
