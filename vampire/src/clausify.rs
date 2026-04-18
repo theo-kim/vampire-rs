@@ -188,9 +188,19 @@ unsafe fn clausify_unlocked(sp: &crate::ffi::Problem) -> Result<Vec<Clause>, Cla
 
         let problem = sys::vampire_problem_from_units(unit_ptrs.as_mut_ptr(), unit_ptrs.len());
 
-        // Invoke the clausifier.  Ignore the returned clause count — we
-        // enumerate below to rebuild the clause shapes structurally.
-        sys::vampire_clausify(problem);
+        // Invoke the clausifier.  We check the return value for the
+        // sentinel `(size_t)-1`, which the C shim now returns if
+        // Vampire's NewCNF threw a C++ exception internally (e.g. on
+        // a formula shape the clausifier can't handle).  Without this
+        // guard the exception would propagate across the FFI boundary
+        // as a foreign exception and abort the Rust process.
+        let n = sys::vampire_clausify(problem);
+        if n == usize::MAX {
+            for u in &unit_ptrs { sys::vampire_free_unit(*u); }
+            return Err(ClausifyError::ClausificationFailed(
+                "Vampire NewCNF threw an internal exception (see stderr)".into(),
+            ));
+        }
 
         // Pull out every unit from the post-clausify problem.  After
         // `vampire_clausify`, every unit is a clause in Vampire's model.
