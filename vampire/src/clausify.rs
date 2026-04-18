@@ -93,9 +93,78 @@ impl std::error::Error for ClausifyError {}
 /// Returns one [`Clause`] per CNF clause Vampire produced.  The empty
 /// clause (if the problem is trivially refutable) appears as
 /// [`Clause::empty`] in the output.
+///
+/// # Note on `Imp` elimination
+///
+/// Vampire's `NewCNF` clausifier ([`Shell::NewCNF::process(BinaryFormula*)`]
+/// in the C++ sources) carries the precondition
+/// `ASS(g->connective() != IMP)` — it requires `Imp` to have been
+/// eliminated before CNF runs.  The `vampire_prove` entry point satisfies
+/// this via `Shell::Preprocess`, but `vampire_clausify` does not run
+/// preprocessing, so naively handing it an `Imp`-containing formula
+/// triggers an assertion failure / SIGSEGV.
+///
+/// To keep the API usable, [`clausify`] performs a single Rust-side
+/// pre-pass that rewrites every `Formula::Imp(a, b)` to
+/// `Formula::Or([Formula::Not(a), b])`.  This is pure structural
+/// transformation — no quantifier or bound-variable handling needed —
+/// and preserves logical meaning 1-to-1.
 pub fn clausify(problem: &ir::Problem, opts: Options) -> Result<Vec<Clause>, ClausifyError> {
-    let sys_problem = lower_problem(problem, opts);
+    let normalised  = eliminate_imp_problem(problem);
+    let sys_problem = lower_problem(&normalised, opts);
     synced(|_| unsafe { clausify_unlocked(&sys_problem) })
+}
+
+/// Rewrite every `Imp(a, b)` sub-formula to `Or([Not(a), b])`, recursively.
+/// `Iff` is left alone — NewCNF handles it via polarity-based expansion.
+fn eliminate_imp(f: &ir::Formula) -> ir::Formula {
+    use ir::Formula as F;
+    match f {
+        F::Imp(a, b) => F::Or(vec![
+            F::Not(Box::new(eliminate_imp(a))),
+            eliminate_imp(b),
+        ]),
+
+        F::And(parts) => F::And(parts.iter().map(eliminate_imp).collect()),
+        F::Or(parts)  => F::Or (parts.iter().map(eliminate_imp).collect()),
+        F::Not(inner) => F::Not(Box::new(eliminate_imp(inner))),
+        F::Iff(a, b)  => F::Iff(
+            Box::new(eliminate_imp(a)),
+            Box::new(eliminate_imp(b)),
+        ),
+
+        F::Forall(v, inner) =>
+            F::Forall(*v, Box::new(eliminate_imp(inner))),
+        F::ForallTyped(v, s, inner) =>
+            F::ForallTyped(*v, s.clone(), Box::new(eliminate_imp(inner))),
+        F::Exists(v, inner) =>
+            F::Exists(*v, Box::new(eliminate_imp(inner))),
+        F::ExistsTyped(v, s, inner) =>
+            F::ExistsTyped(*v, s.clone(), Box::new(eliminate_imp(inner))),
+
+        // Leaves.
+        F::Atom { .. } | F::Eq(..) | F::EqTyped { .. } | F::True | F::False
+            => f.clone(),
+    }
+}
+
+/// Apply [`eliminate_imp`] to every axiom and the conjecture of `p`.
+fn eliminate_imp_problem(p: &ir::Problem) -> ir::Problem {
+    let mut out = if matches!(p.mode(), ir::LogicMode::Tff) {
+        ir::Problem::new_tff()
+    } else {
+        ir::Problem::new()
+    };
+    for s in p.sort_decls() { out.declare_sort(s.clone()); }
+    for f in p.fn_decls()   { out.declare_function(f.clone()); }
+    for pd in p.pred_decls() { out.declare_predicate(pd.clone()); }
+    for ax in p.axioms() {
+        out.with_axiom(eliminate_imp(ax));
+    }
+    if let Some(c) = p.conjecture_ref() {
+        out.conjecture(eliminate_imp(c));
+    }
+    out
 }
 
 /// Low-level driver.  Must hold the global Vampire lock.  Returns the
@@ -369,6 +438,100 @@ mod tests {
             }
             _ => panic!("expected atom literal"),
         }
+    }
+
+    /// Propositional `p => q` — the simplest shape that exposed the
+    /// `ASS(g->connective() != IMP)` precondition in Vampire's NewCNF.
+    #[test]
+    fn clausifies_fof_propositional_implication() {
+        use ir::Predicate;
+
+        let p = Predicate::new("p", 0);
+        let q = Predicate::new("q", 0);
+
+        let mut problem = ir::Problem::new();
+        problem.with_axiom(Formula::imp(
+            Formula::atom(p, vec![]),
+            Formula::atom(q, vec![]),
+        ));
+
+        let clauses = problem.clausify(Options::new()).expect("clausify");
+        assert!(!clauses.is_empty());
+    }
+
+    /// `forall X. p(X) => q(X)` — the quantified version.  Succeeds now
+    /// that the Rust-side `eliminate_imp` pre-pass rewrites `Imp` to
+    /// `Or(Not(...), ...)` before the FFI hand-off.
+    #[test]
+    fn clausifies_fof_universal_implication() {
+        use ir::{Predicate, VarId};
+
+        let p = Predicate::new("p", 1);
+        let q = Predicate::new("q", 1);
+
+        let mut problem = ir::Problem::new();
+        let body = Formula::imp(
+            Formula::atom(p, vec![Term::var(0)]),
+            Formula::atom(q, vec![Term::var(0)]),
+        );
+        problem.with_axiom(Formula::forall(VarId(0), body));
+
+        let clauses = problem.clausify(Options::new()).expect("clausify");
+        assert!(!clauses.is_empty(), "expected ≥1 clause, got {:?}", clauses);
+    }
+
+    /// TFF universal implication with typed predicates — the shape that
+    /// exposed the Imp-elimination bug via sumo-kb's integration.
+    #[test]
+    fn clausifies_tff_universal_implication() {
+        use ir::{Sort, Function, Predicate, VarId};
+
+        let i       = Sort::default_sort();
+        let subcl   = Predicate::typed("s__subclass", &[i.clone(), i.clone()]);
+        let inst    = Predicate::typed("s__instance", &[i.clone(), i.clone()]);
+        let animal  = Function::new("s__Animal", 0);
+        let entity  = Function::new("s__Entity", 0);
+
+        let mut problem = ir::Problem::new_tff();
+        problem.declare_predicate(subcl.clone());
+        problem.declare_predicate(inst.clone());
+
+        let body = Formula::imp(
+            Formula::atom(subcl, vec![Term::var(0), Term::constant(animal)]),
+            Formula::atom(inst,  vec![Term::var(0), Term::constant(entity)]),
+        );
+        problem.with_axiom(Formula::forall(VarId(0), body));
+
+        let clauses = problem.clausify(Options::new()).expect("clausify");
+        assert!(!clauses.is_empty(), "expected ≥1 clause, got {:?}", clauses);
+    }
+
+    /// Unit-test the `eliminate_imp` pass in isolation.
+    #[test]
+    fn eliminate_imp_rewrites_imp_nodes() {
+        use ir::Predicate;
+        let p = Predicate::new("p", 0);
+        let q = Predicate::new("q", 0);
+
+        let f = Formula::imp(
+            Formula::atom(p.clone(), vec![]),
+            Formula::atom(q.clone(), vec![]),
+        );
+        let rewritten = eliminate_imp(&f);
+
+        // Expect: Or([Not(Atom(p)), Atom(q)]).
+        match rewritten {
+            ir::Formula::Or(parts) => {
+                assert_eq!(parts.len(), 2);
+                assert!(matches!(parts[0], ir::Formula::Not(..)));
+                assert!(matches!(parts[1], ir::Formula::Atom { .. }));
+            }
+            other => panic!("expected Or, got {:?}", other),
+        }
+
+        // Leaves untouched.
+        let ground = Formula::atom(p, vec![]);
+        assert_eq!(eliminate_imp(&ground), ground);
     }
 
     /// An outright contradiction (empty clause after resolution).  This

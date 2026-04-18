@@ -2262,6 +2262,17 @@ impl Problem {
     /// # Returns
     ///
     /// A vector of strings, where each string represents one CNF clause.
+    ///
+    /// # Known limitation
+    ///
+    /// This path hands formulas directly to Vampire's `NewCNF` without the
+    /// full `Shell::Preprocess` pipeline that `vampire_prove` runs.  `NewCNF`
+    /// asserts `g->connective() != IMP` in its binary-formula branch, so
+    /// any axiom or conjecture containing an un-eliminated `Imp`
+    /// connective will crash the process.  The structured variant
+    /// [`crate::clausify::clausify`] (`ir::Problem::clausify`) performs a
+    /// Rust-side `Imp` elimination pre-pass before dispatching, and is
+    /// the recommended entry point for callers that need clausification.
     pub fn clausify(&mut self) -> Vec<String> {
         synced(|_| unsafe {
             sys::vampire_prepare_for_next_proof();
