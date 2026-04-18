@@ -1,6 +1,7 @@
 #![cfg(feature = "integrated-prover")]
 
-use vampire_prover::{Options, Problem, ProofRes};
+use vampire_prover::ffi::*;
+use vampire_prover::Options;
 
 #[test]
 fn test_tptp_dat001_1() {
@@ -67,20 +68,20 @@ fn test_successive_isolated_proofs() {
     // Run the same complex TFF problem 10 times in a row to prove isolation works.
     for i in 0..10 {
         println!("Iteration {}...", i);
-        let int_sort = vampire_prover::Sort::int();
-        let list_sort = vampire_prover::Sort::new("list_successive");
+        let int_sort = vampire_prover::SysSort::int();
+        let list_sort = vampire_prover::SysSort::new("list_successive");
 
-        let mycons = vampire_prover::Function::typed("mycons_s", &[int_sort.clone(), list_sort.clone()], list_sort.clone());
-        let nil = vampire_prover::Function::typed("nil_s", &[], list_sort.clone()).with(());
-        let sorted = vampire_prover::Predicate::typed("sorted_s", &[list_sort.clone()]);
+        let mycons = vampire_prover::SysFunction::typed("mycons_s", &[int_sort.clone(), list_sort.clone()], list_sort.clone());
+        let nil = vampire_prover::SysFunction::typed("nil_s", &[], list_sort.clone()).with(());
+        let sorted = vampire_prover::SysPredicate::typed("sorted_s", &[list_sort.clone()]);
         
         let empty_is_sorted = sorted.with(nil.clone());
         let single_is_sorted = vampire_prover::forall_typed(int_sort, |x| sorted.with(mycons.with([x, nil.clone()])));
         
-        let mut problem = vampire_prover::Problem::new(vampire_prover::Options::new());
+        let mut problem = vampire_prover::SysProblem::new(vampire_prover::Options::new());
         problem.with_axiom(empty_is_sorted);
         problem.with_axiom(single_is_sorted);
-        problem.conjecture(sorted.with(mycons.with([vampire_prover::Term::int("1"), nil.clone()])));
+        problem.conjecture(sorted.with(mycons.with([vampire_prover::SysTerm::int("1"), nil.clone()])));
             
         let result = problem.solve_isolated();
         assert_eq!(result, ProofRes::Proved, "Failed on iteration {}", i);

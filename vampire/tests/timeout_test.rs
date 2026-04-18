@@ -1,9 +1,8 @@
 #![cfg(feature = "integrated-prover")]
 
 use std::time::Duration;
-use vampire_prover::{
-    Function, Options, Predicate, Problem, ProofRes, UnknownReason, exists, forall,
-};
+use vampire_prover::ffi::*;
+use vampire_prover::Options;
 
 #[test]
 fn timeout_works() {

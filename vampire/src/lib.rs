@@ -157,25 +157,53 @@
 //
 // * `ir` — pure-Rust IR for constructing, serialising, and inspecting TPTP
 //   problems. Always available; has no dependency on the Vampire C++ library.
+//   Its types are re-exported at the crate root as the canonical names
+//   (`Formula`, `Term`, `Sort`, `Function`, `Predicate`, `Problem`, `Options`,
+//   `Interp`, `VarId`, `LogicMode`).
 //
-// * `ffi` — the original FFI-backed types (`Formula`, `Term`, `Problem`, ...)
-//   that lower into and invoke the Vampire library. Only compiled when the
-//   `integrated-prover` feature is enabled (which is the default).
+// * `ffi` — the FFI-backed types that link the Vampire C++ library. Only
+//   compiled when the `integrated-prover` feature is enabled (default on).
+//   Its mirror types are re-exported at the crate root with a `Sys` prefix
+//   (`SysFormula`, `SysTerm`, `SysSort`, `SysFunction`, `SysPredicate`,
+//   `SysProblem`, `SysInterp`). Proof-result types and DSL helpers keep
+//   their original names since they have no IR counterpart.
 //
-// Types and free functions from `ffi` are re-exported at the crate root when
-// the feature is on, preserving the historical API surface.
+// * `lower` — bridges the two: `lower_problem(&ir::Problem, Options) ->
+//   SysProblem`.  After the IR is lowered, call `SysProblem::solve` or
+//   `SysProblem::solve_and_prove` to run Vampire.
 
 pub mod ir;
 pub mod tptp;
+
+// Canonical types: pure-Rust IR at the crate root.
+pub use ir::{
+    Formula, Function, Interp, LogicMode, Options, Predicate, Problem, Sort, Term, VarId,
+};
 
 #[cfg(feature = "integrated-prover")]
 mod lock;
 
 #[cfg(feature = "integrated-prover")]
-mod ffi;
+pub mod ffi;
 
+// FFI-backed solve types: renamed with `Sys` prefix at the crate root.
 #[cfg(feature = "integrated-prover")]
-pub use ffi::*;
+pub use ffi::{
+    Formula   as SysFormula,
+    Function  as SysFunction,
+    Interp    as SysInterp,
+    Predicate as SysPredicate,
+    Problem   as SysProblem,
+    Sort      as SysSort,
+    Term      as SysTerm,
+};
+
+// Solve results + DSL helpers have no IR counterparts; keep their names.
+#[cfg(feature = "integrated-prover")]
+pub use ffi::{
+    exists, exists_typed, forall, forall_typed, IntoTerm, IntoTermArgs,
+    Proof, ProofRes, ProofRule, ProofStep, UnknownReason,
+};
 
 #[cfg(feature = "integrated-prover")]
 pub mod lower;

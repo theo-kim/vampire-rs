@@ -11,17 +11,25 @@
 //! the returned `Problem` can be mutated (extra axioms appended, options
 //! changed) before calling `solve_and_prove`.
 
-use crate::ir;
-use crate::{Formula, Function, Options, Predicate, Problem, Sort, Term};
+use crate::ir::{self, Options};
+use crate::ffi::{
+    Formula   as SysFormula,
+    Function  as SysFunction,
+    Interp    as SysInterp,
+    Predicate as SysPredicate,
+    Problem   as SysProblem,
+    Sort      as SysSort,
+    Term      as SysTerm,
+};
 
 // -- Public entry point -------------------------------------------------------
 
-/// Rebuild an [`ir::Problem`] as an FFI [`Problem`] ready for solving.
+/// Rebuild an [`ir::Problem`] as an FFI [`SysProblem`] ready for solving.
 ///
 /// `opts` is consumed and set on the returned problem.
-pub fn lower_problem(p: &ir::Problem, opts: Options) -> Problem {
+pub fn lower_problem(p: &ir::Problem, opts: Options) -> SysProblem {
     let mode_tff = matches!(p.mode(), ir::LogicMode::Tff);
-    let mut out = if mode_tff { Problem::new_tff(opts) } else { Problem::new(opts) };
+    let mut out = if mode_tff { SysProblem::new_tff(opts) } else { SysProblem::new(opts) };
 
     for s in p.sort_decls()   { out.declare_sort(lower_sort(s)); }
     for f in p.fn_decls()     { out.declare_function(lower_function(f)); }
@@ -37,45 +45,45 @@ pub fn lower_problem(p: &ir::Problem, opts: Options) -> Problem {
 
 // -- Symbol lowering ----------------------------------------------------------
 
-fn lower_sort(s: &ir::Sort) -> Sort {
+fn lower_sort(s: &ir::Sort) -> SysSort {
     match s.tptp_name() {
-        "$i"    => Sort::default_sort(),
-        "$int"  => Sort::int(),
-        "$real" => Sort::real(),
-        "$rat"  => Sort::rational(),
-        // `$o` is not exposed by the ffi `Sort`; user-defined sorts go
+        "$i"    => SysSort::default_sort(),
+        "$int"  => SysSort::int(),
+        "$real" => SysSort::real(),
+        "$rat"  => SysSort::rational(),
+        // `$o` is not exposed by the FFI `Sort`; user-defined sorts go
         // through `Sort::new`, which interns on the C++ side.
-        name    => Sort::new(name),
+        name    => SysSort::new(name),
     }
 }
 
-fn lower_function(f: &ir::Function) -> Function {
+fn lower_function(f: &ir::Function) -> SysFunction {
     if let Some(i) = f.interp() {
-        return Function::interpreted(f.name(), lower_interp(i));
+        return SysFunction::interpreted(f.name(), lower_interp(i));
     }
     if f.is_typed() {
-        let arg_sorts: Vec<Sort> = f.arg_sorts().iter().map(lower_sort).collect();
+        let arg_sorts: Vec<SysSort> = f.arg_sorts().iter().map(lower_sort).collect();
         let ret_sort = f.ret_sort()
             .map(lower_sort)
             .expect("typed ir::Function missing return sort");
-        return Function::typed(f.name(), &arg_sorts, ret_sort);
+        return SysFunction::typed(f.name(), &arg_sorts, ret_sort);
     }
-    Function::new(f.name(), f.arity())
+    SysFunction::new(f.name(), f.arity())
 }
 
-fn lower_predicate(p: &ir::Predicate) -> Predicate {
+fn lower_predicate(p: &ir::Predicate) -> SysPredicate {
     if let Some(i) = p.interp() {
-        return Predicate::interpreted(p.name(), lower_interp(i));
+        return SysPredicate::interpreted(p.name(), lower_interp(i));
     }
     if p.is_typed() {
-        let arg_sorts: Vec<Sort> = p.arg_sorts().iter().map(lower_sort).collect();
-        return Predicate::typed(p.name(), &arg_sorts);
+        let arg_sorts: Vec<SysSort> = p.arg_sorts().iter().map(lower_sort).collect();
+        return SysPredicate::typed(p.name(), &arg_sorts);
     }
-    Predicate::new(p.name(), p.arity())
+    SysPredicate::new(p.name(), p.arity())
 }
 
-fn lower_interp(i: ir::Interp) -> crate::Interp {
-    use crate::Interp as F;
+fn lower_interp(i: ir::Interp) -> SysInterp {
+    use SysInterp as F;
     use ir::Interp as I;
     match i {
         I::Equal            => F::Equal,
@@ -111,18 +119,18 @@ fn lower_interp(i: ir::Interp) -> crate::Interp {
 
 // -- Term ---------------------------------------------------------------------
 
-fn lower_term(t: &ir::Term) -> Term {
+fn lower_term(t: &ir::Term) -> SysTerm {
     match t {
-        ir::Term::Var(v)       => Term::new_var(v.index()),
-        ir::Term::Int(s)       => Term::int(s),
-        ir::Term::Real(s)      => Term::real(s),
-        ir::Term::Rational(s)  => Term::rational(s),
+        ir::Term::Var(v)       => SysTerm::new_var(v.index()),
+        ir::Term::Int(s)       => SysTerm::int(s),
+        ir::Term::Real(s)      => SysTerm::real(s),
+        ir::Term::Rational(s)  => SysTerm::rational(s),
         ir::Term::Apply(func, args) => {
             let ffi_func = lower_function(func);
             if args.is_empty() {
                 ffi_func.with(())
             } else {
-                let lowered: Vec<Term> = args.iter().map(lower_term).collect();
+                let lowered: Vec<SysTerm> = args.iter().map(lower_term).collect();
                 ffi_func.with(lowered.as_slice())
             }
         }
@@ -131,54 +139,54 @@ fn lower_term(t: &ir::Term) -> Term {
 
 // -- Formula ------------------------------------------------------------------
 
-fn lower_formula(f: &ir::Formula) -> Formula {
+fn lower_formula(f: &ir::Formula) -> SysFormula {
     match f {
-        ir::Formula::True  => Formula::new_true(),
-        ir::Formula::False => Formula::new_false(),
+        ir::Formula::True  => SysFormula::new_true(),
+        ir::Formula::False => SysFormula::new_false(),
 
         ir::Formula::Atom { pred, args } => {
             let ffi_pred = lower_predicate(pred);
-            let lowered: Vec<Term> = args.iter().map(lower_term).collect();
+            let lowered: Vec<SysTerm> = args.iter().map(lower_term).collect();
             ffi_pred.with(lowered.as_slice())
         }
 
         ir::Formula::Eq(lhs, rhs) => {
-            Formula::new_eq(lower_term(lhs), lower_term(rhs))
+            SysFormula::new_eq(lower_term(lhs), lower_term(rhs))
         }
         ir::Formula::EqTyped { lhs, rhs, sort } => {
-            Formula::new_eq_typed(lower_term(lhs), lower_term(rhs), lower_sort(sort))
+            SysFormula::new_eq_typed(lower_term(lhs), lower_term(rhs), lower_sort(sort))
         }
 
-        ir::Formula::Not(inner) => Formula::new_not(lower_formula(inner)),
+        ir::Formula::Not(inner) => SysFormula::new_not(lower_formula(inner)),
 
         ir::Formula::And(parts) => match parts.len() {
-            0 => Formula::new_true(),
+            0 => SysFormula::new_true(),
             1 => lower_formula(&parts[0]),
             _ => {
-                let lowered: Vec<Formula> = parts.iter().map(lower_formula).collect();
-                Formula::new_and(&lowered)
+                let lowered: Vec<SysFormula> = parts.iter().map(lower_formula).collect();
+                SysFormula::new_and(&lowered)
             }
         },
         ir::Formula::Or(parts) => match parts.len() {
-            0 => Formula::new_false(),
+            0 => SysFormula::new_false(),
             1 => lower_formula(&parts[0]),
             _ => {
-                let lowered: Vec<Formula> = parts.iter().map(lower_formula).collect();
-                Formula::new_or(&lowered)
+                let lowered: Vec<SysFormula> = parts.iter().map(lower_formula).collect();
+                SysFormula::new_or(&lowered)
             }
         },
 
         ir::Formula::Imp(a, b) => lower_formula(a).imp(lower_formula(b)),
         ir::Formula::Iff(a, b) => lower_formula(a).iff(lower_formula(b)),
 
-        ir::Formula::Forall(v, body) => Formula::new_forall(v.index(), lower_formula(body)),
-        ir::Formula::Exists(v, body) => Formula::new_exists(v.index(), lower_formula(body)),
+        ir::Formula::Forall(v, body) => SysFormula::new_forall(v.index(), lower_formula(body)),
+        ir::Formula::Exists(v, body) => SysFormula::new_exists(v.index(), lower_formula(body)),
 
         ir::Formula::ForallTyped(v, sort, body) => {
-            Formula::new_forall_typed(v.index(), lower_sort(sort), lower_formula(body))
+            SysFormula::new_forall_typed(v.index(), lower_sort(sort), lower_formula(body))
         }
         ir::Formula::ExistsTyped(v, sort, body) => {
-            Formula::new_exists_typed(v.index(), lower_sort(sort), lower_formula(body))
+            SysFormula::new_exists_typed(v.index(), lower_sort(sort), lower_formula(body))
         }
     }
 }

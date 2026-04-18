@@ -1,6 +1,6 @@
 #![cfg(feature = "integrated-prover")]
 
-use vampire_prover::{Problem, ProofRes};
+use vampire_prover::ffi::*;
 
 #[test]
 fn test_tptp_puz001() {

@@ -1,10 +1,10 @@
 use crate::lock::synced;
+use crate::ir::Options;
 use std::{
     collections::HashMap,
     ffi::CString,
     fmt::Display,
     ops::{BitAnd, BitOr, Index, Not, Shr},
-    time::Duration,
 };
 use vampire_sys::{self as sys, vampire_unit_t, vampire_interpretation_t};
 
@@ -318,7 +318,7 @@ impl<
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::Function;
+/// use vampire_prover::ffi::Function;
 ///
 /// // Create a constant (0-ary function)
 /// let socrates = Function::constant("socrates");
@@ -362,7 +362,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Function;
+    /// use vampire_prover::ffi::Function;
     ///
     /// let mult = Function::new("mult", 2);
     /// assert_eq!(mult.arity(), 2);
@@ -395,7 +395,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Function;
+    /// use vampire_prover::ffi::Function;
     ///
     /// let f = Function::new("f", 3);
     /// assert_eq!(f.arity(), 3);
@@ -416,7 +416,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Function;
+    /// use vampire_prover::ffi::Function;
     ///
     /// let socrates = Function::constant("socrates");
     /// let zero = Function::constant("0");
@@ -438,7 +438,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Term};
+    /// use vampire_prover::ffi::{Function, Term};
     ///
     /// let add = Function::new("add", 2);
     /// let x = Term::new_var(0);
@@ -473,7 +473,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Sort, Function};
+    /// use vampire_prover::ffi::{Sort, Function};
     ///
     /// let person = Sort::new("person");
     /// let father_of = Function::typed("father_of", &[person.clone()], person);
@@ -506,7 +506,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Interp};
+    /// use vampire_prover::ffi::{Function, Interp};
     ///
     /// let plus = Function::interpreted("$sum", Interp::IntPlus);
     /// ```
@@ -535,7 +535,7 @@ impl Function {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Sort, Function};
+    /// use vampire_prover::ffi::{Sort, Function};
     ///
     /// let list = Sort::new("list");
     /// let nil = Function::typed("nil", &[], list.clone());
@@ -570,7 +570,7 @@ impl Function {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate};
+/// use vampire_prover::ffi::{Function, Predicate};
 ///
 /// // Unary predicate (property)
 /// let is_mortal = Predicate::new("mortal", 1);
@@ -615,7 +615,7 @@ impl Predicate {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Predicate;
+    /// use vampire_prover::ffi::Predicate;
     ///
     /// let edge = Predicate::new("edge", 2);
     /// assert_eq!(edge.arity(), 2);
@@ -647,7 +647,7 @@ impl Predicate {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Predicate;
+    /// use vampire_prover::ffi::Predicate;
     ///
     /// let p = Predicate::new("p", 2);
     /// assert_eq!(p.arity(), 2);
@@ -669,7 +669,7 @@ impl Predicate {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate};
+    /// use vampire_prover::ffi::{Function, Predicate};
     ///
     /// let mortal = Predicate::new("mortal", 1);
     /// let socrates = Function::constant("socrates");
@@ -697,7 +697,7 @@ impl Predicate {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Sort, Predicate};
+    /// use vampire_prover::ffi::{Sort, Predicate};
     ///
     /// let person = Sort::new("person");
     /// let animal = Sort::new("animal");
@@ -729,7 +729,7 @@ impl Predicate {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Predicate, Interp};
+    /// use vampire_prover::ffi::{Predicate, Interp};
     ///
     /// let less = Predicate::interpreted("$less", Interp::IntLess);
     /// ```
@@ -753,7 +753,7 @@ impl Predicate {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Sort, Predicate};
+    /// use vampire_prover::ffi::{Sort, Predicate};
     ///
     /// let person = Sort::new("person");
     /// let mortal = Predicate::typed("mortal", &[person]);
@@ -787,7 +787,7 @@ impl Predicate {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Sort, Function, Predicate, forall_typed};
+/// use vampire_prover::ffi::{Sort, Function, Predicate, forall_typed};
 ///
 /// // User-defined sort
 /// let person = Sort::new("person");
@@ -819,7 +819,7 @@ impl Sort {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Sort;
+    /// use vampire_prover::ffi::Sort;
     ///
     /// let person = Sort::new("person");
     /// let person2 = Sort::new("person");
@@ -879,7 +879,7 @@ impl Sort {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Sort;
+    /// use vampire_prover::ffi::Sort;
     ///
     /// let person = Sort::new("person");
     /// assert_eq!(person.tptp_decl(), Some("tff(sort_person, type, person: $tType).".to_string()));
@@ -906,7 +906,7 @@ impl Sort {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Term};
+/// use vampire_prover::ffi::{Function, Term};
 ///
 /// // Create a constant
 /// let zero = Function::constant("0");
@@ -960,7 +960,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Function;
+    /// use vampire_prover::ffi::Function;
     ///
     /// let x = Function::constant("x");
     /// println!("{}", x.to_string()); // Prints the vampire string representation
@@ -991,7 +991,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Term};
+    /// use vampire_prover::ffi::{Function, Term};
     ///
     /// let add = Function::new("add", 2);
     /// let x = Term::new_var(0);
@@ -1028,7 +1028,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Term;
+    /// use vampire_prover::ffi::Term;
     ///
     /// let x = Term::new_var(0);
     /// let y = Term::new_var(1);
@@ -1049,7 +1049,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Term;
+    /// use vampire_prover::ffi::Term;
     ///
     /// let (x, idx) = Term::free_var();
     /// assert_eq!(idx, 0);
@@ -1075,7 +1075,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, forall};
+    /// use vampire_prover::ffi::{Function, forall};
     ///
     /// let succ = Function::new("succ", 1);
     /// let zero = Function::constant("0");
@@ -1098,7 +1098,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Sort, Function, forall_typed};
+    /// use vampire_prover::ffi::{Sort, Function, forall_typed};
     ///
     /// let person = Sort::new("person");
     /// let alice = Function::typed("alice", &[], person.clone()).with(());
@@ -1115,7 +1115,7 @@ impl Term {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Term;
+    /// use vampire_prover::ffi::Term;
     ///
     /// let hundred = Term::int("100");
     /// ```
@@ -1156,7 +1156,7 @@ impl Term {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, forall};
+/// use vampire_prover::ffi::{Function, Predicate, forall};
 ///
 /// let p = Predicate::new("P", 1);
 /// let q = Predicate::new("Q", 1);
@@ -1223,7 +1223,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate};
+    /// use vampire_prover::ffi::{Function, Predicate};
     ///
     /// let p = Predicate::new("P", 1);
     /// let x = Function::constant("x");
@@ -1256,7 +1256,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Formula};
+    /// use vampire_prover::ffi::{Function, Predicate, Formula};
     ///
     /// let mortal = Predicate::new("mortal", 1);
     /// let socrates = Function::constant("socrates");
@@ -1287,7 +1287,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Formula};
+    /// use vampire_prover::ffi::{Function, Formula};
     ///
     /// let x = Function::constant("x");
     /// let y = Function::constant("y");
@@ -1309,7 +1309,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Formula};
+    /// use vampire_prover::ffi::{Function, Predicate, Formula};
     ///
     /// let p = Predicate::new("P", 1);
     /// let q = Predicate::new("Q", 1);
@@ -1339,7 +1339,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Formula};
+    /// use vampire_prover::ffi::{Function, Predicate, Formula};
     ///
     /// let p = Predicate::new("P", 1);
     /// let q = Predicate::new("Q", 1);
@@ -1369,7 +1369,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Formula};
+    /// use vampire_prover::ffi::{Function, Predicate, Formula};
     ///
     /// let p = Predicate::new("P", 1);
     /// let x = Function::constant("x");
@@ -1388,7 +1388,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Formula;
+    /// use vampire_prover::ffi::Formula;
     ///
     /// let t = Formula::new_true();
     /// ```
@@ -1404,7 +1404,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::Formula;
+    /// use vampire_prover::ffi::Formula;
     ///
     /// let f = Formula::new_false();
     /// ```
@@ -1427,7 +1427,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Formula, Term};
+    /// use vampire_prover::ffi::{Function, Predicate, Formula, Term};
     ///
     /// let p = Predicate::new("P", 1);
     /// let x = Term::new_var(0);
@@ -1454,7 +1454,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Formula, Term};
+    /// use vampire_prover::ffi::{Function, Predicate, Formula, Term};
     ///
     /// let p = Predicate::new("P", 1);
     /// let x = Term::new_var(0);
@@ -1480,7 +1480,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate};
+    /// use vampire_prover::ffi::{Function, Predicate};
     ///
     /// let p = Predicate::new("P", 1);
     /// let q = Predicate::new("Q", 1);
@@ -1507,7 +1507,7 @@ impl Formula {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, forall};
+    /// use vampire_prover::ffi::{Function, Predicate, forall};
     ///
     /// let even = Predicate::new("even", 1);
     /// let div_by_2 = Predicate::new("divisible_by_2", 1);
@@ -1587,7 +1587,7 @@ impl Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, forall};
+/// use vampire_prover::ffi::{Function, Predicate, forall};
 ///
 /// let p = Predicate::new("P", 1);
 ///
@@ -1602,7 +1602,7 @@ impl Formula {
 /// # Complex Example
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, forall};
+/// use vampire_prover::ffi::{Function, Predicate, forall};
 ///
 /// let mortal = Predicate::new("mortal", 1);
 /// let human = Predicate::new("human", 1);
@@ -1631,7 +1631,7 @@ pub fn forall<F: FnOnce(Term) -> Formula>(f: F) -> Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, exists};
+/// use vampire_prover::ffi::{Function, Predicate, exists};
 ///
 /// let prime = Predicate::new("prime", 1);
 ///
@@ -1646,7 +1646,7 @@ pub fn forall<F: FnOnce(Term) -> Formula>(f: F) -> Formula {
 /// # Complex Example
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, exists, forall};
+/// use vampire_prover::ffi::{Function, Predicate, exists, forall};
 ///
 /// let greater = Predicate::new("greater", 2);
 ///
@@ -1672,7 +1672,7 @@ pub fn exists<F: FnOnce(Term) -> Formula>(f: F) -> Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Sort, Predicate, Function, forall_typed};
+/// use vampire_prover::ffi::{Sort, Predicate, Function, forall_typed};
 ///
 /// let person = Sort::new("person");
 /// let mortal = Predicate::typed("mortal", &[person.clone()]);
@@ -1699,7 +1699,7 @@ pub fn forall_typed<F: FnOnce(Term) -> Formula>(sort: Sort, f: F) -> Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Sort, Predicate, Function, exists_typed};
+/// use vampire_prover::ffi::{Sort, Predicate, Function, exists_typed};
 ///
 /// let person = Sort::new("person");
 /// let happy = Predicate::typed("happy", &[person.clone()]);
@@ -1718,7 +1718,7 @@ pub fn exists_typed<F: FnOnce(Term) -> Formula>(sort: Sort, f: F) -> Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate};
+/// use vampire_prover::ffi::{Function, Predicate};
 ///
 /// let p = Predicate::new("P", 1);
 /// let q = Predicate::new("Q", 1);
@@ -1740,7 +1740,7 @@ impl BitAnd for Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate};
+/// use vampire_prover::ffi::{Function, Predicate};
 ///
 /// let p = Predicate::new("P", 1);
 /// let q = Predicate::new("Q", 1);
@@ -1762,7 +1762,7 @@ impl BitOr for Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate};
+/// use vampire_prover::ffi::{Function, Predicate};
 ///
 /// let p = Predicate::new("P", 1);
 /// let x = Function::constant("x");
@@ -1783,7 +1783,7 @@ impl Not for Formula {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate};
+/// use vampire_prover::ffi::{Function, Predicate};
 ///
 /// let p = Predicate::new("P", 1);
 /// let q = Predicate::new("Q", 1);
@@ -1800,84 +1800,8 @@ impl Shr for Formula {
     }
 }
 
-/// Configuration options for the Vampire theorem prover.
-///
-/// Options allow you to configure the behavior of the prover, such as setting
-/// time limits. Use the builder pattern to construct options.
-///
-/// # Examples
-///
-/// ```
-/// use vampire_prover::Options;
-/// use std::time::Duration;
-///
-/// // Default options (no timeout)
-/// let opts = Options::new();
-///
-/// // Set a timeout
-/// let opts = Options::new().timeout(Duration::from_secs(5));
-/// ```
-#[derive(Debug, Clone)]
-pub struct Options {
-    timeout: Option<Duration>,
-    extra_options: Vec<(String, String)>,
-}
-
-impl Options {
-    /// Creates a new Options with default settings.
-    ///
-    /// By default, no timeout is set.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use vampire_prover::Options;
-    ///
-    /// let opts = Options::new();
-    /// ```
-    pub fn new() -> Self {
-        Self { timeout: None, extra_options: Vec::new() }
-    }
-
-    /// Sets the timeout for the prover.
-    ///
-    /// If the prover exceeds this time limit, it will return
-    /// `ProofRes::Unknown(UnknownReason::Timeout)`.
-    ///
-    /// # Arguments
-    ///
-    /// * `duration` - The maximum time the prover should run
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use vampire_prover::Options;
-    /// use std::time::Duration;
-    ///
-    /// let opts = Options::new().timeout(Duration::from_secs(10));
-    /// ```
-    pub fn timeout(&mut self, duration: Duration) -> &mut Self {
-        self.timeout = Some(duration);
-        self
-    }
-
-    /// Sets an arbitrary Vampire option by name and value.
-    ///
-    /// This maps directly to Vampire's `--name value` command-line options.
-    /// For example, `set_option("mode", "casc")` enables CASC portfolio mode.
-    ///
-    /// Returns `&mut Self` to allow chaining.
-    pub fn set_option(&mut self, name: impl Into<String>, value: impl Into<String>) -> &mut Self {
-        self.extra_options.push((name.into(), value.into()));
-        self
-    }
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// `Options` is now defined in `crate::ir::options` so it can be constructed
+// without the C++ backend. Imported at the top of this file.
 
 /// A theorem proving problem consisting of axioms and an optional conjecture.
 ///
@@ -1890,7 +1814,8 @@ impl Default for Options {
 /// ## Basic Usage
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, Problem, ProofRes, Options, forall};
+/// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, ProofRes, forall};
 ///
 /// let mortal = Predicate::new("mortal", 1);
 /// let human = Predicate::new("human", 1);
@@ -1910,7 +1835,8 @@ impl Default for Options {
 /// You can also create problems without a conjecture to check satisfiability:
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, Problem, Options};
+/// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem};
 ///
 /// let p = Predicate::new("P", 1);
 /// let x = Function::constant("x");
@@ -1971,7 +1897,8 @@ impl Problem {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Problem, Options};
+    /// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Problem};
     /// use std::time::Duration;
     ///
     /// // Default options
@@ -2028,7 +1955,8 @@ impl Problem {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Problem, Options, forall};
+    /// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, forall};
     ///
     /// let p = Predicate::new("P", 1);
     /// let q = Predicate::new("Q", 1);
@@ -2057,7 +1985,8 @@ impl Problem {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Problem, Options, forall};
+    /// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, forall};
     ///
     /// let p = Predicate::new("P", 1);
     /// let q = Predicate::new("Q", 1);
@@ -2298,7 +2227,8 @@ impl Problem {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Problem, ProofRes, Options, forall};
+    /// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, ProofRes, forall};
     ///
     /// let p = Predicate::new("P", 1);
     /// let x = Function::constant("x");
@@ -2384,7 +2314,8 @@ impl Problem {
     /// # Examples
     ///
     /// ```
-    /// use vampire_prover::{Function, Predicate, Problem, ProofRes, Options, forall};
+    /// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, ProofRes, forall};
     ///
     /// let p = Predicate::new("P", 1);
     /// let x = Function::constant("x");
@@ -2424,7 +2355,8 @@ impl Problem {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, Problem, ProofRes, Options, forall};
+/// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, ProofRes, forall};
 ///
 /// let p = Predicate::new("P", 1);
 /// let x = Function::constant("x");
@@ -2466,7 +2398,7 @@ pub enum ProofRes {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{ProofRes, UnknownReason};
+/// use vampire_prover::ffi::{ProofRes, UnknownReason};
 ///
 /// let result = ProofRes::Unknown(UnknownReason::Timeout);
 ///
@@ -2538,7 +2470,8 @@ impl ProofRes {
 /// # Examples
 ///
 /// ```
-/// use vampire_prover::{Function, Predicate, Problem, ProofRes, Options};
+/// use vampire_prover::Options;
+/// use vampire_prover::ffi::{Function, Predicate, Problem, ProofRes};
 ///
 /// let p = Predicate::new("P", 1);
 /// let x = Function::constant("x");
@@ -2783,7 +2716,8 @@ impl ProofStep {
 
 #[cfg(test)]
 mod test {
-    use crate::{Function, Options, Predicate, Problem, ProofRes, Term, exists, forall};
+    use super::{Function, Predicate, Problem, ProofRes, Term, exists, forall};
+    use crate::Options;
 
     #[test]
     fn test_with_syntax() {
@@ -3130,15 +3064,15 @@ mod test {
     #[test]
     fn tff_sort_idempotent() {
         // Registering the same sort twice must return the same index.
-        let s1 = crate::Sort::new("tff_sort_idem_s");
-        let s2 = crate::Sort::new("tff_sort_idem_s");
+        let s1 = super::Sort::new("tff_sort_idem_s");
+        let s2 = super::Sort::new("tff_sort_idem_s");
         assert_eq!(s1, s2);
     }
 
     #[test]
     fn tff_typed_function_idempotent() {
         // Registering the same typed function twice must return the same symbol.
-        let s = crate::Sort::new("tff_fn_idem_sort");
+        let s = super::Sort::new("tff_fn_idem_sort");
         let f1 = Function::typed("tff_fn_idem_f", &[s.clone()], s.clone());
         let f2 = Function::typed("tff_fn_idem_f", &[s.clone()], s);
         assert_eq!(f1, f2);
@@ -3146,7 +3080,7 @@ mod test {
 
     #[test]
     fn tff_typed_predicate_idempotent() {
-        let s = crate::Sort::new("tff_pred_idem_sort");
+        let s = super::Sort::new("tff_pred_idem_sort");
         let p1 = Predicate::typed("tff_pred_idem_p", &[s.clone()]);
         let p2 = Predicate::typed("tff_pred_idem_p", &[s]);
         assert_eq!(p1, p2);
@@ -3155,14 +3089,14 @@ mod test {
     #[test]
     fn tff_socrates_typed() {
         // TFF version of the Socrates syllogism using a user-defined sort.
-        let person = crate::Sort::new("person_tff");
+        let person = super::Sort::new("person_tff");
 
         let is_mortal = Predicate::typed("mortal_tff", &[person.clone()]);
         let is_man = Predicate::typed("man_tff", &[person.clone()]);
         let socrates = Function::typed("socrates_tff", &[], person.clone()).with(());
 
         let men_are_mortal =
-            crate::forall_typed(person, |x| is_man.with(x) >> is_mortal.with(x));
+            super::forall_typed(person, |x| is_man.with(x) >> is_mortal.with(x));
 
         let result = Problem::new(Options::new())
             .with_axiom(is_man.with(socrates))
@@ -3178,13 +3112,13 @@ mod test {
         // Prove that if father_of(x) = father_of(y) and x = alice then
         // father_of(alice) = father_of(y), using typed equality.
 
-        let person = crate::Sort::new("person_eq_tff");
+        let person = super::Sort::new("person_eq_tff");
         let father_of = Function::typed("father_of_tff", &[person.clone()], person.clone());
         let alice = Function::typed("alice_tff", &[], person.clone()).with(());
 
         let result = Problem::new(Options::new())
-            .with_axiom(crate::forall_typed(person.clone(), |x| {
-                crate::forall_typed(person.clone(), |y| {
+            .with_axiom(super::forall_typed(person.clone(), |x| {
+                super::forall_typed(person.clone(), |y| {
                     father_of.with(x).typed_eq(father_of.with(y), person.clone())
                         >> father_of.with(alice).typed_eq(father_of.with(y), person.clone())
                 })
@@ -3202,10 +3136,10 @@ mod test {
     #[test]
     fn tff_builtin_sorts_accessible() {
         // Smoke test: built-in sorts return valid, distinct indices.
-        let i = crate::Sort::default_sort();
-        let z = crate::Sort::int();
-        let r = crate::Sort::real();
-        let q = crate::Sort::rational();
+        let i = super::Sort::default_sort();
+        let z = super::Sort::int();
+        let r = super::Sort::real();
+        let q = super::Sort::rational();
         // All should be distinct from each other.
         assert_ne!(i, z);
         assert_ne!(i, r);
@@ -3231,7 +3165,7 @@ mod test {
     #[test]
     fn tff_to_tptp_tff_problem() {
         // TFF problem: to_tptp() should emit tff(...) syntax with type declarations.
-        let list = crate::Sort::new("list_to_tptp");
+        let list = super::Sort::new("list_to_tptp");
         let nil = Function::typed("nil_to_tptp", &[], list.clone());
         let sorted = Predicate::typed("sorted_to_tptp", &[list.clone()]);
 

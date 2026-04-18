@@ -1,8 +1,7 @@
 #![cfg(feature = "integrated-prover")]
 
-use vampire_prover::{
-    forall_typed, Function, Interp, IntoTerm, Options, Predicate, Problem, ProofRes, Sort, Term,
-};
+use vampire_prover::ffi::*;
+use vampire_prover::Options;
 
 // All tests in this file share Vampire's global state, so they must not run concurrently.
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

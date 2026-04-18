@@ -22,9 +22,11 @@ pub mod symbol;
 pub mod term;
 pub mod formula;
 pub mod problem;
+pub mod options;
 pub(crate) mod tptp_emit;
 
 pub use symbol::{Sort, Function, Predicate, Interp};
 pub use term::{Term, VarId};
 pub use formula::Formula;
 pub use problem::{Problem, LogicMode};
+pub use options::Options;
