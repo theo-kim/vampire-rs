@@ -210,3 +210,9 @@ pub mod lower;
 
 #[cfg(feature = "integrated-prover")]
 pub use lower::lower_problem;
+
+#[cfg(feature = "integrated-prover")]
+pub mod clausify;
+
+#[cfg(feature = "integrated-prover")]
+pub use clausify::{clausify, ClausifyError};

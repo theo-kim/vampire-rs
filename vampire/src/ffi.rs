@@ -1184,7 +1184,7 @@ impl Term {
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct Formula {
-    id: *mut sys::vampire_formula_t,
+    pub(crate) id: *mut sys::vampire_formula_t,
 }
 
 impl PartialEq for Formula {
@@ -1968,6 +1968,16 @@ impl Problem {
     pub fn with_axiom(&mut self, f: Formula) -> &mut Self {
         self.axioms.push(f);
         self
+    }
+
+    /// Internal: borrow the axiom vector for structured-clausify paths.
+    pub(crate) fn axioms_raw(&self) -> &[Formula] {
+        &self.axioms
+    }
+
+    /// Internal: borrow the conjecture for structured-clausify paths.
+    pub(crate) fn conjecture_raw(&self) -> Option<&Formula> {
+        self.conjecture.as_ref()
     }
 
     /// Sets the conjecture for the problem.

@@ -788,3 +788,15 @@ unsafe extern "C" {
         predicate_idx: ::std::os::raw::c_uint,
     ) -> *const ::std::os::raw::c_char;
 }
+unsafe extern "C" {
+    #[doc = " Enumerate the units in a problem as a heap-allocated array of handles.\n\n Typically called after vampire_clausify(), in which case every returned unit\n is a clause (and can be converted via vampire_unit_as_clause).  The returned\n handles are borrowed -- they are owned by the problem and must NOT be freed\n with vampire_free_unit.  Free the containing array with\n vampire_free_unit_array()."]
+    pub fn vampire_problem_units(
+        problem: *mut vampire_problem_t,
+        out_units: *mut *mut *mut vampire_unit_t,
+        out_count: *mut usize,
+    ) -> ::std::os::raw::c_int;
+}
+unsafe extern "C" {
+    #[doc = " Free a unit-handle array returned by vampire_problem_units()."]
+    pub fn vampire_free_unit_array(units: *mut *mut vampire_unit_t);
+}
