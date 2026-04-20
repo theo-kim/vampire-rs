@@ -349,6 +349,250 @@ impl ir::Problem {
     pub fn clausify(&self, opts: Options) -> Result<Vec<Clause>, ClausifyError> {
         clausify(self, opts)
     }
+
+    /// Clausify this problem, preserving per-axiom attribution of the
+    /// output clauses.
+    ///
+    /// See [`clausify_batch`] for the free-function form and the
+    /// semantics of the result buckets.
+    pub fn clausify_batch(&self, opts: Options) -> Result<BatchedClauses, ClausifyError> {
+        clausify_batch(self, opts)
+    }
+}
+
+// =========================================================================
+//  Batched clausification with per-axiom attribution
+// =========================================================================
+
+/// Output of [`clausify_batch`], carrying post-clausify clauses bucketed
+/// by the input axiom they trace back to in Vampire's inference graph.
+///
+/// Semantics of the three buckets:
+///
+/// * [`by_axiom`] — positional list aligned with the axioms in the
+///   input [`ir::Problem`].  `by_axiom[i]` is the set of CNF clauses
+///   whose inference-chain ancestry traces back **uniquely** to the
+///   `i`-th axiom (in the order they were added to the Problem).  If
+///   an axiom clausified to a tautology, its slot is an empty `Vec`.
+///
+/// * [`conjecture`] — clauses derived from the optional conjecture.
+///   Empty when the input `Problem` carries no conjecture.
+///
+/// * [`shared`] — clauses whose ancestry traces back to **two or
+///   more** distinct input axioms (produced when Vampire's NewCNF
+///   introduces a definitional predicate for a sub-formula shared
+///   across inputs), or to none (pure derivations introduced by
+///   clausifier bookkeeping with no input parent in the graph).  On
+///   SUMO-style ontologies these are rare; the struct surfaces them
+///   as a separate bucket so downstream callers can decide whether
+///   to attribute them to every parent or handle specially.
+///
+/// [`by_axiom`]:    BatchedClauses::by_axiom
+/// [`conjecture`]:  BatchedClauses::conjecture
+/// [`shared`]:      BatchedClauses::shared
+#[derive(Debug, Clone, Default)]
+pub struct BatchedClauses {
+    /// Clauses per input axiom, positionally aligned with
+    /// `problem.axioms()`.
+    pub by_axiom:   Vec<Vec<Clause>>,
+    /// Clauses derived from the input conjecture (if any).
+    pub conjecture: Vec<Clause>,
+    /// Clauses that trace back to multiple input axioms, or to
+    /// none.  Rare on Horn-ish ontologies; common when inputs share
+    /// large sub-formulas exceeding NewCNF's naming threshold.
+    pub shared:     Vec<Clause>,
+}
+
+/// Clausify a whole `Problem` in a single Vampire call, returning
+/// output clauses attributed back to their input axioms.
+///
+/// Behaviour differs from [`clausify`] in two important ways:
+///
+/// 1. **Single FFI call.**  All axioms (and the conjecture) are
+///    packed into one `vampire_clausify` invocation.  This amortises
+///    the per-call overhead of the global-mutex acquisition and
+///    Vampire's internal problem-setup bookkeeping across the whole
+///    batch.
+///
+/// 2. **Per-axiom output bucketing.**  Every post-clausify output
+///    clause is traced back through Vampire's `Inference` graph to
+///    the set of input units it depends on.  Clauses tracing to
+///    exactly one axiom land in [`BatchedClauses::by_axiom`]; the
+///    conjecture's clauses land in
+///    [`BatchedClauses::conjecture`]; anything with multiple or
+///    zero input parents falls into [`BatchedClauses::shared`].
+///
+/// Uses the same pre-pass (`Imp` → `Or(Not, _)`) as [`clausify`];
+/// semantic output is equivalent to per-axiom clausification modulo
+/// NewCNF's naming heuristic, which *may* introduce shared
+/// definitional clauses that the per-axiom path wouldn't produce.
+/// Callers that want the exact per-axiom output shape should call
+/// [`clausify`] in a loop.
+pub fn clausify_batch(
+    problem: &ir::Problem,
+    opts: Options,
+) -> Result<BatchedClauses, ClausifyError> {
+    let normalised  = eliminate_imp_problem(problem);
+    let sys_problem = lower_problem(&normalised, opts);
+    synced(|_| unsafe { clausify_batch_unlocked(&sys_problem) })
+}
+
+/// Low-level batched driver.  Must hold the global Vampire lock.
+unsafe fn clausify_batch_unlocked(
+    sp: &crate::ffi::Problem,
+) -> Result<BatchedClauses, ClausifyError> {
+    use std::collections::HashMap;
+    unsafe {
+        sys::vampire_prepare_for_next_proof();
+
+        // Build the input units AND record each axiom/conjecture's
+        // unit_number so we can attribute output clauses later.
+        //
+        // `input_unit_to_axiom[num]` maps a Vampire unit_number back
+        // to the 0-based axiom index (in input order).  The
+        // conjecture, if present, is tracked separately.
+        let axioms     = sp.axioms_raw();
+        let conjecture = sp.conjecture_raw();
+
+        let mut unit_ptrs: Vec<*mut sys::vampire_unit_t> =
+            Vec::with_capacity(axioms.len() + 1);
+        let mut input_unit_to_axiom: HashMap<u32, usize> =
+            HashMap::with_capacity(axioms.len());
+        let mut conjecture_unit_num: Option<u32> = None;
+
+        for (axiom_idx, axiom) in axioms.iter().enumerate() {
+            let u = sys::vampire_axiom_formula(axiom.id);
+            let n = sys::vampire_unit_number(u);
+            input_unit_to_axiom.insert(n, axiom_idx);
+            unit_ptrs.push(u);
+        }
+        if let Some(c) = conjecture {
+            let u = sys::vampire_conjecture_formula(c.id);
+            conjecture_unit_num = Some(sys::vampire_unit_number(u));
+            unit_ptrs.push(u);
+        }
+
+        let problem = sys::vampire_problem_from_units(
+            unit_ptrs.as_mut_ptr(), unit_ptrs.len(),
+        );
+
+        let n = sys::vampire_clausify(problem);
+        if n == usize::MAX {
+            for u in &unit_ptrs { sys::vampire_free_unit(*u); }
+            return Err(ClausifyError::ClausificationFailed(
+                "Vampire NewCNF threw an internal exception (see stderr)".into(),
+            ));
+        }
+
+        // Pull every post-clausify unit out.
+        let mut units_ptr: *mut *mut sys::vampire_unit_t = ptr::null_mut();
+        let mut count: usize = 0;
+        let res = sys::vampire_problem_units(problem, &mut units_ptr, &mut count);
+        if res != 0 || units_ptr.is_null() {
+            for u in &unit_ptrs { sys::vampire_free_unit(*u); }
+            return Err(ClausifyError::UnitEnumerationFailed);
+        }
+
+        // Attribute every output clause.
+        let mut batch = BatchedClauses {
+            by_axiom:   vec![Vec::new(); axioms.len()],
+            conjecture: Vec::new(),
+            shared:     Vec::new(),
+        };
+
+        for i in 0..count {
+            let out_unit = *units_ptr.add(i);
+            let clause_ptr = sys::vampire_unit_as_clause(out_unit);
+            if clause_ptr.is_null() { continue; }
+            let clause = read_clause(clause_ptr);
+
+            // Walk the inference graph upward from this output unit,
+            // collecting any input-level unit_numbers we reach.
+            let sources = walk_input_ancestors(
+                out_unit, &input_unit_to_axiom, conjecture_unit_num,
+            );
+
+            // Dispatch to the right bucket.  Exactly-one-axiom wins
+            // common case; the conjecture is a separate bucket;
+            // everything else (multi-parent or orphan) is "shared".
+            let distinct_axioms: Vec<usize> = {
+                let mut xs: Vec<usize> = sources.axiom_indices.into_iter().collect();
+                xs.sort_unstable();
+                xs.dedup();
+                xs
+            };
+
+            match (distinct_axioms.as_slice(), sources.conjecture_touched) {
+                ([], true)      => batch.conjecture.push(clause),
+                ([idx], false)  => batch.by_axiom[*idx].push(clause),
+                ([], false)     => batch.shared.push(clause),    // orphan derivation
+                _               => batch.shared.push(clause),    // multi-parent or mixed
+            }
+        }
+
+        sys::vampire_free_unit_array(units_ptr);
+        for u in &unit_ptrs { sys::vampire_free_unit(*u); }
+
+        Ok(batch)
+    }
+}
+
+/// Sources collected by an ancestry walk.
+struct InputSources {
+    /// Indices (into `problem.axioms()`) this derivation traces to.
+    axiom_indices:      std::collections::HashSet<usize>,
+    /// True if the derivation traces back to the conjecture unit.
+    conjecture_touched: bool,
+}
+
+/// BFS upward through Vampire's inference graph from `start`,
+/// collecting every input-level ancestor (axiom or conjecture).
+///
+/// The walk stops expanding a unit once its `unit_number` is found
+/// in `input_unit_to_axiom` (meaning we reached an input axiom) or
+/// equals `conjecture_unit_num` (conjecture).  Orphan leaves
+/// (derived units with no parents that *also* aren't recorded
+/// inputs) are silently dropped — they contribute nothing to
+/// attribution.
+unsafe fn walk_input_ancestors(
+    start:                 *mut sys::vampire_unit_t,
+    input_unit_to_axiom:   &std::collections::HashMap<u32, usize>,
+    conjecture_unit_num:   Option<u32>,
+) -> InputSources {
+    use std::collections::{HashSet, VecDeque};
+    let mut axiom_indices:      HashSet<usize> = HashSet::new();
+    let mut conjecture_touched: bool           = false;
+    let mut visited:            HashSet<u32>   = HashSet::new();
+    let mut queue:              VecDeque<*mut sys::vampire_unit_t> = VecDeque::new();
+    queue.push_back(start);
+
+    while let Some(unit) = queue.pop_front() {
+        unsafe {
+            let num = sys::vampire_unit_number(unit);
+            if !visited.insert(num) { continue; }
+
+            // If this is an input we recorded, terminate this branch.
+            if let Some(&axiom_idx) = input_unit_to_axiom.get(&num) {
+                axiom_indices.insert(axiom_idx);
+                continue;
+            }
+            if Some(num) == conjecture_unit_num {
+                conjecture_touched = true;
+                continue;
+            }
+
+            // Otherwise expand the parents.
+            let pc = sys::vampire_unit_parent_count(unit);
+            for j in 0..pc {
+                let parent = sys::vampire_unit_parent(unit, j);
+                if !parent.is_null() {
+                    queue.push_back(parent);
+                }
+            }
+        }
+    }
+
+    InputSources { axiom_indices, conjecture_touched }
 }
 
 // ============================================================================
@@ -564,5 +808,183 @@ mod tests {
             "unexpected output shape: {:?}",
             clauses,
         );
+    }
+
+    // ---- Batched clausification --------------------------------------
+
+    /// Canonicalise a set of clauses for order-insensitive comparison.
+    ///
+    /// Clause order within a batch depends on Vampire's internal
+    /// processing order, which may differ from per-axiom mode.
+    /// Literal order within a clause is also Vampire's choice.  For
+    /// correctness comparison we want a set-of-sets: each clause's
+    /// literals sorted, then the list of clauses sorted.
+    fn canonical_clause_set(clauses: &[Clause]) -> Vec<Vec<String>> {
+        let mut out: Vec<Vec<String>> = clauses.iter().map(|c| {
+            let mut lits: Vec<String> = c.literals.iter()
+                .map(|l| format!("{:?}", l))
+                .collect();
+            lits.sort();
+            lits
+        }).collect();
+        out.sort();
+        out
+    }
+
+    /// Batch with a single axiom must produce exactly the same clause
+    /// set (modulo ordering) as the per-axiom path.
+    #[test]
+    fn batch_of_one_matches_per_axiom() {
+        let p = Predicate::new("p", 0);
+        let q = Predicate::new("q", 0);
+        let f = Formula::and(vec![
+            Formula::or(vec![
+                Formula::atom(p.clone(), vec![]),
+                Formula::atom(q.clone(), vec![]),
+            ]),
+            Formula::or(vec![
+                Formula::not(Formula::atom(p, vec![])),
+                Formula::atom(q, vec![]),
+            ]),
+        ]);
+
+        let mut prob = ir::Problem::new();
+        prob.with_axiom(f);
+
+        let per_axiom = prob.clausify(Options::new()).expect("per-axiom");
+        let batch     = prob.clausify_batch(Options::new()).expect("batch");
+
+        // Batch-of-one: all output goes to axiom 0.
+        assert_eq!(batch.by_axiom.len(), 1);
+        assert!(batch.shared.is_empty(),     "unexpected shared: {:?}", batch.shared);
+        assert!(batch.conjecture.is_empty(), "unexpected conjecture: {:?}", batch.conjecture);
+
+        // Clause sets match.
+        assert_eq!(
+            canonical_clause_set(&per_axiom),
+            canonical_clause_set(&batch.by_axiom[0]),
+            "per-axiom vs batch-of-one mismatch",
+        );
+    }
+
+    /// Two disjoint axioms in one batch should each land in their own
+    /// bucket, and each bucket should equal what per-axiom
+    /// clausification of that axiom alone would produce.
+    #[test]
+    fn batch_of_two_disjoint_axioms() {
+        let p = Predicate::new("p", 0);
+        let q = Predicate::new("q", 0);
+        let r = Predicate::new("r", 0);
+        let s = Predicate::new("s", 0);
+
+        // axiom 0: p & q   (two unit clauses)
+        let a0 = Formula::and(vec![
+            Formula::atom(p.clone(), vec![]),
+            Formula::atom(q.clone(), vec![]),
+        ]);
+        // axiom 1: r & s   (two unit clauses)
+        let a1 = Formula::and(vec![
+            Formula::atom(r.clone(), vec![]),
+            Formula::atom(s.clone(), vec![]),
+        ]);
+
+        // Per-axiom reference.
+        let per0 = {
+            let mut prob = ir::Problem::new();
+            prob.with_axiom(a0.clone());
+            prob.clausify(Options::new()).expect("per0")
+        };
+        let per1 = {
+            let mut prob = ir::Problem::new();
+            prob.with_axiom(a1.clone());
+            prob.clausify(Options::new()).expect("per1")
+        };
+
+        // Batch.
+        let mut batch_prob = ir::Problem::new();
+        batch_prob.with_axiom(a0);
+        batch_prob.with_axiom(a1);
+        let batch = batch_prob.clausify_batch(Options::new()).expect("batch");
+
+        assert_eq!(batch.by_axiom.len(), 2);
+        assert!(batch.shared.is_empty(),
+            "disjoint axioms should not share clauses: {:?}", batch.shared);
+        assert!(batch.conjecture.is_empty());
+
+        assert_eq!(canonical_clause_set(&per0), canonical_clause_set(&batch.by_axiom[0]));
+        assert_eq!(canonical_clause_set(&per1), canonical_clause_set(&batch.by_axiom[1]));
+    }
+
+    /// A batch with a conjecture should land conjecture-derived
+    /// clauses in the conjecture bucket, not the axiom buckets.
+    #[test]
+    fn batch_with_conjecture_separates_buckets() {
+        let p = Predicate::new("p", 0);
+        let q = Predicate::new("q", 0);
+
+        let mut prob = ir::Problem::new();
+        prob.with_axiom(Formula::imp(
+            Formula::atom(p.clone(), vec![]),
+            Formula::atom(q.clone(), vec![]),
+        ));
+        prob.with_axiom(Formula::atom(p, vec![]));
+        prob.conjecture(Formula::atom(q, vec![]));
+
+        let batch = prob.clausify_batch(Options::new()).expect("batch");
+
+        assert_eq!(batch.by_axiom.len(), 2);
+        // Exactly one axiom slot is non-empty per axiom (by construction).
+        assert!(!batch.by_axiom[0].is_empty(), "axiom 0 should yield clauses");
+        assert!(!batch.by_axiom[1].is_empty(), "axiom 1 should yield clauses");
+        // The negated-conjecture clause lives in the conjecture bucket.
+        assert!(!batch.conjecture.is_empty(), "conjecture bucket should be non-empty");
+    }
+
+    /// Empty batch (no axioms, no conjecture) should produce nothing
+    /// and not crash.
+    #[test]
+    fn batch_empty_problem() {
+        let prob = ir::Problem::new();
+        let batch = prob.clausify_batch(Options::new()).expect("batch");
+        assert!(batch.by_axiom.is_empty());
+        assert!(batch.conjecture.is_empty());
+        assert!(batch.shared.is_empty());
+    }
+
+    /// Five independent axioms — batch vs per-axiom should agree on
+    /// each bucket.  Sanity check that attribution scales.
+    #[test]
+    fn batch_of_five_independent_axioms() {
+        let preds: Vec<Predicate> = (0..5)
+            .map(|i| Predicate::new(&format!("p{}", i), 1))
+            .collect();
+        let c = Function::new("c", 0);
+
+        let axioms: Vec<Formula> = preds.iter().map(|p| {
+            Formula::atom(p.clone(), vec![Term::constant(c.clone())])
+        }).collect();
+
+        // Per-axiom baseline.
+        let per: Vec<Vec<Clause>> = axioms.iter().map(|a| {
+            let mut prob = ir::Problem::new();
+            prob.with_axiom(a.clone());
+            prob.clausify(Options::new()).expect("per-axiom")
+        }).collect();
+
+        // Batched.
+        let mut prob = ir::Problem::new();
+        for a in &axioms { prob.with_axiom(a.clone()); }
+        let batch = prob.clausify_batch(Options::new()).expect("batch");
+
+        assert_eq!(batch.by_axiom.len(), 5);
+        assert!(batch.shared.is_empty());
+        assert!(batch.conjecture.is_empty());
+        for i in 0..5 {
+            assert_eq!(
+                canonical_clause_set(&per[i]),
+                canonical_clause_set(&batch.by_axiom[i]),
+                "axiom {} bucket mismatch", i,
+            );
+        }
     }
 }

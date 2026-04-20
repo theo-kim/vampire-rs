@@ -800,3 +800,33 @@ unsafe extern "C" {
     #[doc = " Free a unit-handle array returned by vampire_problem_units()."]
     pub fn vampire_free_unit_array(units: *mut *mut vampire_unit_t);
 }
+unsafe extern "C" {
+    #[doc = " Vampire's unique identifier for this unit (Unit::number()).\n\
+             \n\
+             Every Unit Vampire creates carries a monotonically-allocated\n\
+             unit_number.  Used by callers that need to attribute\n\
+             post-clausify clauses to their originating input axioms: record\n\
+             the number at input time, walk vampire_unit_parent after\n\
+             clausification, match against recorded inputs."]
+    pub fn vampire_unit_number(unit: *mut vampire_unit_t) -> u32;
+}
+unsafe extern "C" {
+    #[doc = " Number of direct inference-parents of this unit.\n\
+             \n\
+             Input units (axioms, conjecture) typically return 0.  Derived\n\
+             units (e.g. CNF output clauses) return >= 1 — one per parent\n\
+             in the inference graph."]
+    pub fn vampire_unit_parent_count(unit: *mut vampire_unit_t) -> usize;
+}
+unsafe extern "C" {
+    #[doc = " The i-th direct inference-parent of this unit.\n\
+             \n\
+             Parents are enumerated in Inference::Iterator order.  Returns\n\
+             NULL if `i >= vampire_unit_parent_count(unit)`.  The returned\n\
+             pointer aliases Vampire internal state and MUST NOT be freed;\n\
+             it lives until the next vampire_prepare_for_next_proof() call."]
+    pub fn vampire_unit_parent(
+        unit: *mut vampire_unit_t,
+        i: usize,
+    ) -> *mut vampire_unit_t;
+}

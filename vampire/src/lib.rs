@@ -215,4 +215,4 @@ pub use lower::lower_problem;
 pub mod clausify;
 
 #[cfg(feature = "integrated-prover")]
-pub use clausify::{clausify, ClausifyError};
+pub use clausify::{clausify, clausify_batch, BatchedClauses, ClausifyError};
