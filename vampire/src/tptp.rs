@@ -1,6 +1,6 @@
-//! TPTP parser producing pure-Rust [`ir`] types.
+//! TPTP parser producing pure-Rust [`crate::ir`] types.
 //!
-//! This parser is the inverse of [`ir::Problem::to_tptp`] / [`ir::Formula::to_tptp`].
+//! This parser is the inverse of [`crate::ir::Problem::to_tptp`] / [`crate::ir::Formula::to_tptp`].
 //! It builds a fresh `ir::Problem` from a TPTP input string, handling FOF and TFF
 //! dialects.  No FFI state is touched; callers wanting to solve the parsed problem
 //! can feed the result through [`crate::lower_problem`].
@@ -123,7 +123,7 @@ impl Context {
 pub struct TptpParser;
 
 impl TptpParser {
-    /// Parse a TPTP string into an [`ir::Problem`].
+    /// Parse a TPTP string into an [`crate::ir::Problem`].
     pub fn parse(input: &str) -> Result<Problem, ParseError> {
         let mut ctx = Context::new();
         let mut formulas: Vec<(String, Formula)> = Vec::new();

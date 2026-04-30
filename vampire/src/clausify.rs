@@ -96,7 +96,7 @@ impl std::error::Error for ClausifyError {}
 ///
 /// # Note on `Imp` elimination
 ///
-/// Vampire's `NewCNF` clausifier ([`Shell::NewCNF::process(BinaryFormula*)`]
+/// Vampire's `NewCNF` clausifier (`Shell::NewCNF::process(BinaryFormula*)`
 /// in the C++ sources) carries the precondition
 /// `ASS(g->connective() != IMP)` — it requires `Imp` to have been
 /// eliminated before CNF runs.  The `vampire_prove` entry point satisfies
