@@ -1,5 +1,5 @@
 use crate::lock::synced;
-use crate::ir::Options;
+use crate::options::Options;
 use std::{
     collections::HashMap,
     ffi::CString,
@@ -23,6 +23,8 @@ pub enum Interp {
     IntPlus,
     IntMinus,
     IntMultiply,
+    IntQuotientE,
+    IntRemainderT,
     IntAbs,
     RatGreater,
     RatGreaterEqual,
@@ -40,6 +42,29 @@ pub enum Interp {
     RealMinus,
     RealMultiply,
     RealQuotient,
+    // Rounding (argument sort → integer)
+    IntFloor,
+    IntCeiling,
+    IntTruncate,
+    IntRound,
+    RatFloor,
+    RatCeiling,
+    RatTruncate,
+    RatRound,
+    RealFloor,
+    RealCeiling,
+    RealTruncate,
+    RealRound,
+    // Type coercions
+    IntToInt,
+    IntToRat,
+    IntToReal,
+    RatToInt,
+    RatToRat,
+    RatToReal,
+    RealToInt,
+    RealToRat,
+    RealToReal,
 }
 
 impl Interp {
@@ -56,6 +81,8 @@ impl Interp {
             Interp::IntPlus => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_PLUS,
             Interp::IntMinus => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_MINUS,
             Interp::IntMultiply => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_MULTIPLY,
+            Interp::IntQuotientE => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_QUOTIENT_E,
+            Interp::IntRemainderT => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_REMAINDER_T,
             Interp::IntAbs => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_ABS,
             Interp::RatGreater => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_GREATER,
             Interp::RatGreaterEqual => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_GREATER_EQUAL,
@@ -73,6 +100,27 @@ impl Interp {
             Interp::RealMinus => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_MINUS,
             Interp::RealMultiply => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_MULTIPLY,
             Interp::RealQuotient => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_QUOTIENT,
+            Interp::IntFloor    => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_FLOOR,
+            Interp::IntCeiling  => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_CEILING,
+            Interp::IntTruncate => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_TRUNCATE,
+            Interp::IntRound    => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_ROUND,
+            Interp::RatFloor    => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_FLOOR,
+            Interp::RatCeiling  => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_CEILING,
+            Interp::RatTruncate => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_TRUNCATE,
+            Interp::RatRound    => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_ROUND,
+            Interp::RealFloor   => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_FLOOR,
+            Interp::RealCeiling => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_CEILING,
+            Interp::RealTruncate=> sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_TRUNCATE,
+            Interp::RealRound   => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_ROUND,
+            Interp::IntToInt    => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_TO_INT,
+            Interp::IntToRat    => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_TO_RAT,
+            Interp::IntToReal   => sys::vampire_interpretation_t_VAMPIRE_INTERP_INT_TO_REAL,
+            Interp::RatToInt    => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_TO_INT,
+            Interp::RatToRat    => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_TO_RAT,
+            Interp::RatToReal   => sys::vampire_interpretation_t_VAMPIRE_INTERP_RAT_TO_REAL,
+            Interp::RealToInt   => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_TO_INT,
+            Interp::RealToRat   => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_TO_RAT,
+            Interp::RealToReal  => sys::vampire_interpretation_t_VAMPIRE_INTERP_REAL_TO_REAL,
         }
     }
 }
@@ -515,7 +563,13 @@ impl Function {
             let name_cstr = CString::new(name).expect("valid c string");
             let id = unsafe { sys::vampire_add_interpreted_function(name_cstr.as_ptr(), interp.to_raw()) };
             let arity = match interp {
-                Interp::IntUnaryMinus | Interp::IntSuccessor | Interp::IntAbs => 1,
+                Interp::IntUnaryMinus | Interp::IntSuccessor | Interp::IntAbs
+                | Interp::IntFloor    | Interp::IntCeiling   | Interp::IntTruncate  | Interp::IntRound
+                | Interp::RatFloor    | Interp::RatCeiling   | Interp::RatTruncate  | Interp::RatRound
+                | Interp::RealFloor   | Interp::RealCeiling  | Interp::RealTruncate | Interp::RealRound
+                | Interp::IntToInt    | Interp::IntToRat     | Interp::IntToReal
+                | Interp::RatToInt    | Interp::RatToRat     | Interp::RatToReal
+                | Interp::RealToInt   | Interp::RealToRat    | Interp::RealToReal => 1,
                 _ => 2,
             };
             Self {
@@ -833,6 +887,25 @@ impl Sort {
         })
     }
 
+    /// Returns the Boolean sort (`$o`) — HOL/THF.
+    pub fn bool_sort() -> Self {
+        synced(|_| Self {
+            id: unsafe { sys::vampire_sort_bool() },
+            name: "$o".to_string(),
+            is_builtin: true,
+        })
+    }
+
+    /// Registers the arrow sort `from > to` (HOL/THF).  The result is usable
+    /// everywhere a sort is (typed symbols, typed quantifiers).
+    pub fn arrow(from: &Sort, to: &Sort) -> Self {
+        synced(|_| Self {
+            id: unsafe { sys::vampire_sort_arrow(from.id, to.id) },
+            name: format!("({} > {})", from.name, to.name),
+            is_builtin: true,
+        })
+    }
+
     /// Returns the default individual sort (`$i`).
     pub fn default_sort() -> Self {
         synced(|_| Self {
@@ -922,6 +995,25 @@ impl Sort {
 #[repr(transparent)]
 pub struct Term {
     id: *mut sys::vampire_term_t,
+}
+
+impl Term {
+    /// HOL application `self @ arg` (curried).  `self` must be a proper term
+    /// (constant or application) — its arrow sort determines the result.
+    pub fn hol_app(&self, arg: &Term) -> Term {
+        synced(|_| Term {
+            id: unsafe { sys::vampire_hol_app(self.id, arg.id) },
+        })
+    }
+
+    /// HOL application with an explicit head sort — required when `self` is
+    /// a VARIABLE (`P @ X` under a `! [P: $i > $o]` binder), whose sort
+    /// cannot be inferred from the term itself.
+    pub fn hol_app_sorted(&self, head_sort: &Sort, arg: &Term) -> Term {
+        synced(|_| Term {
+            id: unsafe { sys::vampire_hol_app_sorted(self.id, head_sort.id, arg.id) },
+        })
+    }
 }
 
 impl PartialEq for Term {
@@ -1185,6 +1277,34 @@ impl Term {
 #[repr(transparent)]
 pub struct Formula {
     pub(crate) id: *mut sys::vampire_formula_t,
+}
+
+impl Formula {
+    /// A Boolean-sorted term in formula position (`X: $o` as a formula) —
+    /// HOL/THF.
+    pub fn from_bool_term(t: &Term) -> Formula {
+        synced(|_| Formula {
+            id: unsafe { sys::vampire_bool_term_formula(t.id) },
+        })
+    }
+
+    /// This formula as a Boolean-sorted term (FOOL: a compound formula in a
+    /// `$o` argument position) — HOL/THF.
+    pub fn as_bool_term(&self) -> Term {
+        synced(|_| Term {
+            id: unsafe { sys::vampire_formula_term(self.id) },
+        })
+    }
+
+    /// Returns the raw FFI pointer to the underlying Vampire formula.
+    ///
+    /// This is an advanced API intended for use by crates that need to pass
+    /// formulas directly to vampire-sys FFI calls (e.g. the clausify path in
+    /// sigmakee-rs-core). The caller must ensure the pointer is only used
+    /// while the `Formula` is live.
+    pub fn as_ptr(&self) -> *mut sys::vampire_formula_t {
+        self.id
+    }
 }
 
 impl PartialEq for Formula {
@@ -1873,14 +1993,6 @@ pub struct Problem {
 impl Problem {
     /// Creates a new problem from a TPTP string.
     ///
-    /// # Errors
-    ///
-    /// Returns a `ParseError` if the TPTP input is invalid or unsupported.
-    pub fn from_tptp(input: &str) -> Result<Self, crate::tptp::ParseError> {
-        let ir_problem = crate::tptp::TptpParser::parse(input)?;
-        Ok(crate::lower::lower_problem(&ir_problem, Options::new()))
-    }
-
     /// Replaces the options on this problem.
     pub fn with_options(mut self, options: Options) -> Self {
         self.options = options;
@@ -1970,13 +2082,13 @@ impl Problem {
         self
     }
 
-    /// Internal: borrow the axiom vector for structured-clausify paths.
-    pub(crate) fn axioms_raw(&self) -> &[Formula] {
+    /// Borrow the axiom vector for structured-clausify paths.
+    pub fn axioms_raw(&self) -> &[Formula] {
         &self.axioms
     }
 
-    /// Internal: borrow the conjecture for structured-clausify paths.
-    pub(crate) fn conjecture_raw(&self) -> Option<&Formula> {
+    /// Borrow the conjecture for structured-clausify paths.
+    pub fn conjecture_raw(&self) -> Option<&Formula> {
         self.conjecture.as_ref()
     }
 
@@ -2158,7 +2270,7 @@ impl Problem {
             }
 
             if pid == 0 {
-                // CHILD PROCESS
+                // child: run the solve and write the outcome back through the pipe
                 unsafe { libc::close(fds[0]) };
                 let result = unsafe { self.unsynce_solve() };
                 
@@ -2186,14 +2298,13 @@ impl Problem {
                 // Use _exit to prevent running Rust destructors in the child
                 unsafe { libc::_exit(0) };
             } else {
-                // PARENT PROCESS
+                // parent: wait for the child and read the outcome back
                 unsafe { libc::close(fds[1]) };
                 let mut reader = unsafe { std::fs::File::from_raw_fd(fds[0]) };
-                
+
                 let mut status = 0i32;
                 unsafe { libc::waitpid(pid, &mut status, 0) };
 
-                // Check if child crashed
                 if libc::WIFSIGNALED(status) {
                     let sig = libc::WTERMSIG(status);
                     return ProofRes::Unknown(UnknownReason::Other(format!("Solver process crashed with signal {}", sig)));
@@ -2292,8 +2403,8 @@ impl Problem {
             }
 
             let problem = sys::vampire_problem_from_units(unit_ptrs.as_mut_ptr(), unit_ptrs.len());
-            
-            // Crucial: perform clausification before extraction
+
+            // The clauses must exist before vampire_get_cnf can extract them.
             sys::vampire_clausify(problem);
             
             let mut clauses_ptr: *mut *mut ::std::os::raw::c_char = std::ptr::null_mut();
