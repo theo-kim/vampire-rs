@@ -17,25 +17,13 @@ readme = "README.md"
 default = ["integrated-prover"]
 
 # When enabled: compiles the FFI module (`ffi`) which links vampire-sys
-# (Vampire C++ library via CMake) and exposes the historical API surface
-# (`Formula`, `Term`, `Problem`, `solve_and_prove`, ...). Without this
-# feature only the pure-Rust `ir` module is available -- useful for
-# front-ends that construct TPTP problems and hand them to an external
-# prover subprocess.
+# (Vampire C++ library via CMake). Without this feature only `options` is
+# available.
 integrated-prover = ["dep:vampire-sys", "dep:libc"]
-
-# Derive `serde::Serialize` / `Deserialize` on every pure-Rust IR type
-# (`ir::Problem`, `ir::Formula`, `ir::Term`, `ir::Function`, ...).
-# Consumers that persist an IR value (e.g. sumo-kb's Phase D axiom
-# cache) opt in here so they can bincode the whole tree without
-# round-tripping through TPTP.
-serde = ["dep:serde"]
 
 [dependencies]
 vampire-sys = { path = "../vampire-sys", version = "0.6", optional = true }
-winnow      = "0.7"
 libc        = { version = "0.2", optional = true }
-serde       = { version = "1", features = ["derive"], optional = true }
 
 # Examples use the FFI types, so they require the C++ backend.
 [[example]]

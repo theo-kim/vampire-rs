@@ -149,39 +149,31 @@
 //! licenses. See the [Vampire LICENCE](https://github.com/vprover/vampire/blob/master/LICENCE)
 //! for details on the Vampire license requirements.
 
-// ============================================================================
-//  Module layout
-// ============================================================================
+// This crate is a pure FFI shell over the C++ Vampire prover. The pure-Rust
+// IR types (`Formula`, `Term`, `Sort`, `Function`, `Predicate`, `Problem`,
+// `Interp`, `VarId`, `LogicMode`) live in `sigmakee-rs-core::trans::ir`,
+// which is the canonical home for problem construction and TPTP
+// serialisation.
 //
-// The crate is organised in two layers:
+// Modules:
 //
-// * `ir` — pure-Rust IR for constructing, serialising, and inspecting TPTP
-//   problems. Always available; has no dependency on the Vampire C++ library.
-//   Its types are re-exported at the crate root as the canonical names
-//   (`Formula`, `Term`, `Sort`, `Function`, `Predicate`, `Problem`, `Options`,
-//   `Interp`, `VarId`, `LogicMode`).
+// * `options` — `Options` (timeout + extra Vampire options). Pure data,
+//   no C++ dependency. Available without the `integrated-prover` feature.
 //
 // * `ffi` — the FFI-backed types that link the Vampire C++ library. Only
 //   compiled when the `integrated-prover` feature is enabled (default on).
-//   Its mirror types are re-exported at the crate root with a `Sys` prefix
+//   Its types are re-exported at the crate root with a `Sys` prefix
 //   (`SysFormula`, `SysTerm`, `SysSort`, `SysFunction`, `SysPredicate`,
 //   `SysProblem`, `SysInterp`). Proof-result types and DSL helpers keep
 //   their original names since they have no IR counterpart.
 //
-// * `lower` — bridges the two: `lower_problem(&ir::Problem, Options) ->
-//   SysProblem`.  After the IR is lowered, call `SysProblem::solve` or
-//   `SysProblem::solve_and_prove` to run Vampire.
+// * `lock` — global Vampire mutex for serialising FFI calls.
 
-pub mod ir;
-pub mod tptp;
-
-// Canonical types: pure-Rust IR at the crate root.
-pub use ir::{
-    Formula, Function, Interp, LogicMode, Options, Predicate, Problem, Sort, Term, VarId,
-};
+pub mod options;
+pub use options::Options;
 
 #[cfg(feature = "integrated-prover")]
-mod lock;
+pub mod lock;
 
 #[cfg(feature = "integrated-prover")]
 pub mod ffi;
@@ -204,15 +196,3 @@ pub use ffi::{
     exists, exists_typed, forall, forall_typed, IntoTerm, IntoTermArgs,
     Proof, ProofRes, ProofRule, ProofStep, UnknownReason,
 };
-
-#[cfg(feature = "integrated-prover")]
-pub mod lower;
-
-#[cfg(feature = "integrated-prover")]
-pub use lower::lower_problem;
-
-#[cfg(feature = "integrated-prover")]
-pub mod clausify;
-
-#[cfg(feature = "integrated-prover")]
-pub use clausify::{clausify, clausify_batch, BatchedClauses, ClausifyError};

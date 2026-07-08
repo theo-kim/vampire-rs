@@ -94,6 +94,27 @@ pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_PLUS: vampire_interpretat
 pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_MINUS: vampire_interpretation_t = 31;
 pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_MULTIPLY: vampire_interpretation_t = 32;
 pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_QUOTIENT: vampire_interpretation_t = 33;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_FLOOR: vampire_interpretation_t = 34;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_CEILING: vampire_interpretation_t = 35;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_TRUNCATE: vampire_interpretation_t = 36;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_ROUND: vampire_interpretation_t = 37;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_FLOOR: vampire_interpretation_t = 38;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_CEILING: vampire_interpretation_t = 39;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_TRUNCATE: vampire_interpretation_t = 40;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_ROUND: vampire_interpretation_t = 41;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_FLOOR: vampire_interpretation_t = 42;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_CEILING: vampire_interpretation_t = 43;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_TRUNCATE: vampire_interpretation_t = 44;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_ROUND: vampire_interpretation_t = 45;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_TO_INT: vampire_interpretation_t = 46;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_TO_RAT: vampire_interpretation_t = 47;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_INT_TO_REAL: vampire_interpretation_t = 48;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_TO_INT: vampire_interpretation_t = 49;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_TO_RAT: vampire_interpretation_t = 50;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_RAT_TO_REAL: vampire_interpretation_t = 51;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_TO_INT: vampire_interpretation_t = 52;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_TO_RAT: vampire_interpretation_t = 53;
+pub const vampire_interpretation_t_VAMPIRE_INTERP_REAL_TO_REAL: vampire_interpretation_t = 54;
 pub type vampire_interpretation_t = ::std::os::raw::c_uint;
 pub const vampire_input_type_t_VAMPIRE_AXIOM: vampire_input_type_t = 0;
 pub const vampire_input_type_t_VAMPIRE_NEGATED_CONJECTURE: vampire_input_type_t = 1;
@@ -566,6 +587,22 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " Run the prover on a problem.\n @param problem The problem to solve\n @return The proof result"]
     pub fn vampire_prove(problem: *mut vampire_problem_t) -> vampire_proof_result_t;
+    pub fn vampire_sort_bool() -> ::std::os::raw::c_uint;
+    pub fn vampire_sort_arrow(
+        from: ::std::os::raw::c_uint,
+        to: ::std::os::raw::c_uint,
+    ) -> ::std::os::raw::c_uint;
+    pub fn vampire_hol_app(
+        head: *mut vampire_term_t,
+        arg: *mut vampire_term_t,
+    ) -> *mut vampire_term_t;
+    pub fn vampire_hol_app_sorted(
+        head: *mut vampire_term_t,
+        head_sort: ::std::os::raw::c_uint,
+        arg: *mut vampire_term_t,
+    ) -> *mut vampire_term_t;
+    pub fn vampire_bool_term_formula(t: *mut vampire_term_t) -> *mut vampire_formula_t;
+    pub fn vampire_formula_term(f: *mut vampire_formula_t) -> *mut vampire_term_t;
 }
 unsafe extern "C" {
     pub fn vampire_clausify(problem: *mut vampire_problem_t) -> usize;
