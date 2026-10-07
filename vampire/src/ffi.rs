@@ -1984,6 +1984,12 @@ pub struct Problem {
     options: Options,
     mode: LogicMode,
     axioms: Vec<Formula>,
+    /// Caller-supplied name of each axiom (parallel to `axioms`), set by
+    /// [`Problem::with_named_axiom`].
+    axiom_names: Vec<Option<String>>,
+    /// Vampire's unit number for each axiom (parallel to `axioms`), recorded
+    /// by the most recent solve so proof steps can be traced back to inputs.
+    axiom_units: Vec<u32>,
     conjecture: Option<Formula>,
     sort_decls: Vec<Sort>,
     fn_decls: Vec<Function>,
@@ -2022,6 +2028,8 @@ impl Problem {
             options,
             mode: LogicMode::Fof,
             axioms: Vec::new(),
+            axiom_names: Vec::new(),
+            axiom_units: Vec::new(),
             conjecture: None,
             sort_decls: Vec::new(),
             fn_decls: Vec::new(),
@@ -2040,6 +2048,8 @@ impl Problem {
             options,
             mode: LogicMode::Tff,
             axioms: Vec::new(),
+            axiom_names: Vec::new(),
+            axiom_units: Vec::new(),
             conjecture: None,
             sort_decls: Vec::new(),
             fn_decls: Vec::new(),
@@ -2079,6 +2089,44 @@ impl Problem {
     /// ```
     pub fn with_axiom(&mut self, f: Formula) -> &mut Self {
         self.axioms.push(f);
+        self.axiom_names.push(None);
+        self
+    }
+
+    /// Adds an axiom carrying a caller-chosen `name`.
+    ///
+    /// The name is not passed to Vampire; it is attached to the proof steps
+    /// that use this axiom as an input, available through
+    /// [`ProofStep::axiom_name`] after [`Problem::solve_and_prove`]. Use it to
+    /// map proof steps back to the caller's own identifiers (e.g. the source
+    /// sentence an axiom was translated from).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vampire_prover::Options;
+    /// use vampire_prover::ffi::{Function, Predicate, Problem, ProofRes};
+    ///
+    /// let p = Predicate::new("P", 1);
+    /// let x = Function::constant("x");
+    ///
+    /// let (result, proof) = Problem::new(Options::new())
+    ///     .with_named_axiom(p.with(x), "p_of_x")
+    ///     .conjecture(p.with(x))
+    ///     .solve_and_prove();
+    ///
+    /// assert_eq!(result, ProofRes::Proved);
+    /// let proof = proof.unwrap();
+    /// let names: Vec<&str> = proof
+    ///     .steps()
+    ///     .iter()
+    ///     .filter_map(|s| s.axiom_name())
+    ///     .collect();
+    /// assert_eq!(names, ["p_of_x"]);
+    /// ```
+    pub fn with_named_axiom(&mut self, f: Formula, name: impl Into<String>) -> &mut Self {
+        self.axioms.push(f);
+        self.axiom_names.push(Some(name.into()));
         self
     }
 
@@ -2226,8 +2274,10 @@ impl Problem {
 
             let mut units = Vec::new();
 
+            self.axiom_units.clear();
             for axiom in &self.axioms {
                 let axiom_unit = sys::vampire_axiom_formula(axiom.id);
+                self.axiom_units.push(sys::vampire_unit_number(axiom_unit));
                 units.push(axiom_unit);
             }
             if let Some(conjecture) = self.conjecture {
@@ -2470,7 +2520,8 @@ impl Problem {
             };
 
             let refutation = sys::vampire_get_refutation();
-            let proof = Proof::from_refutation(refutation);
+            let mut proof = Proof::from_refutation(refutation);
+            proof.attribute_axioms(&self.axiom_units, &self.axiom_names);
 
             (res, Some(proof))
         })
@@ -2660,6 +2711,8 @@ impl Proof {
                     rule,
                     premises,
                     conclusion,
+                    axiom_index: None,
+                    axiom_name: None,
                 };
                 steps.push(step);
             }
@@ -2667,6 +2720,23 @@ impl Proof {
             sys::vampire_free_proof_steps(steps_ptr, steps_len);
 
             Self { steps }
+        }
+    }
+
+    /// Mark every input-axiom step with the index (and name, if any) of the
+    /// problem axiom it is. `units[i]` is the unit number Vampire gave axiom
+    /// `i`; an input step's [`ProofStep::discovery_order`] is its unit number.
+    fn attribute_axioms(&mut self, units: &[u32], names: &[Option<String>]) {
+        let index_of: HashMap<u32, usize> =
+            units.iter().enumerate().map(|(i, &u)| (u, i)).collect();
+        for step in &mut self.steps {
+            if step.rule != ProofRule::Axiom {
+                continue;
+            }
+            if let Some(&i) = index_of.get(&step.discovery_order) {
+                step.axiom_index = Some(i);
+                step.axiom_name = names.get(i).cloned().flatten();
+            }
         }
     }
 
@@ -2811,6 +2881,8 @@ pub struct ProofStep {
     rule: ProofRule,
     premises: Vec<usize>,
     conclusion: Formula,
+    axiom_index: Option<usize>,
+    axiom_name: Option<String>,
 }
 
 impl ProofStep {
@@ -2843,6 +2915,20 @@ impl ProofStep {
     /// the proof DAG.
     pub fn discovery_order(&self) -> u32 {
         self.discovery_order
+    }
+
+    /// For a step that is one of the problem's input axioms: the axiom's index
+    /// in the order it was added ([`Problem::with_axiom`] /
+    /// [`Problem::with_named_axiom`]). `None` for every other step, including
+    /// the negated conjecture.
+    pub fn axiom_index(&self) -> Option<usize> {
+        self.axiom_index
+    }
+
+    /// For a step that is an input axiom added with
+    /// [`Problem::with_named_axiom`]: that name. `None` otherwise.
+    pub fn axiom_name(&self) -> Option<&str> {
+        self.axiom_name.as_deref()
     }
 }
 
